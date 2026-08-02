@@ -19,7 +19,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-  <script type="text/babel" data-presets="react">
+  <script type="text/babel" data-presets="react" data-type="module">
 import { useState, useRef, useEffect } from "react";
 
 // ── COLORS ──────────────────────────────────────────────────────────────────
@@ -293,6 +293,9 @@ function ConfBar(props) {
     </div>
   );
 }
+
+  </script>
+  <script type="text/babel" data-presets="react" data-type="module">
 
 function GradeChip(props) {
   var grade = props.grade;
@@ -4609,6 +4612,9 @@ var PITCHER_STATS = {
 };
 
 // ── BULLPEN PITCHER CARD ──────────────────────────────────────────────────────
+  </script>
+  <script type="text/babel" data-presets="react" data-type="module">
+
 function BullpenPitcher(props) {
   var p = props.p;
   var expandedArr = useState(false);
@@ -8359,6 +8365,9 @@ function NFLPassingTab(props) {
 }
 
 
+  </script>
+  <script type="text/babel" data-presets="react" data-type="module">
+
 function NFLSummaryTab() {
   var viewArr = useState("Game Stats");
   var view = viewArr[0]; var setView = viewArr[1];
@@ -11857,11 +11866,16 @@ function NFLPlayerPage(props) {
 
   </script>
   <script>
-    window.addEventListener('load', function() {
+    document.addEventListener("DOMContentLoaded", function() {
       setTimeout(function() {
-        var root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(React.createElement(App));
-      }, 100);
+        try {
+          var root = ReactDOM.createRoot(document.getElementById('root'));
+          root.render(React.createElement(App));
+        } catch(e) {
+          console.error('SharpSlip render error:', e);
+          document.getElementById('root').innerHTML = '<div style="color:white;padding:40px;font-family:sans-serif"><h2>Loading error</h2><p>' + e.message + '</p></div>';
+        }
+      }, 500);
     });
   </script>
 </body>
