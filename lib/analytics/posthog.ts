@@ -3,7 +3,7 @@ import PostHog from 'posthog-js'
 /** A key that is missing or still the placeholder means analytics is switched off. */
 const real = (v: string | undefined): v is string => !!v && v !== 'placeholder'
 
-const KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY
+const KEY = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_KEY
 const HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST
 
 let started = false
