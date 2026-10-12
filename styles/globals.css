@@ -1,0 +1,186 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+
+  --bg: #08090c;
+  --card: #111318;
+  --card2: #0e1014;
+  --card3: #16191f;
+  --border: #1f2229;
+  --border2: #2a2d35;
+  --text: #f0f2f5;
+  --text2: #8b909a;
+  --muted: #4b5058;
+  --accent: #3b9eff;
+  --accent2: #1a7fe8;
+  --grade-a: #00e5a0;
+  --grade-b: #00b4d8;
+  --grade-c: #ffb800;
+  --hot: #ff6b35;
+  --cold: #3b82f6;
+  --win: #10b981;
+  --loss: #ef4444;
+  --warning: #f59e0b;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+/* Trading-terminal numerals — used for stat values, hit rates, confidence %, grades. */
+.stat-number {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-featured {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 800;
+  font-size: 2rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.section-header {
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-header::before {
+  content: '';
+  width: 3px;
+  height: 18px;
+  background: var(--accent);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+@keyframes ticker-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.ticker-track {
+  animation: ticker-scroll linear infinite;
+}
+
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track {
+    animation: none;
+  }
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.live-pulse {
+  animation: live-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes conf-fill {
+  from {
+    width: 0%;
+  }
+}
+
+.conf-bar-fill {
+  animation: conf-fill 0.7s ease-out;
+}
+
+/* Leaders board */
+@keyframes bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+.bar-grow {
+  transform-origin: left center;
+  animation: bar-grow 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.board-row {
+  border-left: 2px solid color-mix(in srgb, var(--tc) 55%, transparent);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.board-row:hover {
+  background-color: var(--card3);
+  border-left-color: var(--tc);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar-grow {
+    animation: none;
+  }
+}
+
+/* Standings board */
+.st-grid {
+  display: grid;
+  grid-template-columns: var(--cols-base);
+  align-items: center;
+  column-gap: 2px;
+}
+
+@media (min-width: 768px) {
+  .st-grid {
+    grid-template-columns: var(--cols-md);
+  }
+}
+
+@media (min-width: 1024px) {
+  .st-grid {
+    grid-template-columns: var(--cols-lg);
+  }
+}
+
+.st-team {
+  background-color: #111318;
+  border-left: 3px solid color-mix(in srgb, var(--tc) 65%, transparent);
+  border-bottom: 1px solid #1f2229;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.st-team:last-child {
+  border-bottom: 0;
+}
+
+.st-team:hover {
+  background-color: #16191f;
+  border-left-color: var(--tc);
+}
+
+.st-team.leader {
+  background-color: color-mix(in srgb, var(--tc) 5%, #111318);
+  border-left-color: var(--tc);
+}
+
+.st-team.leader:hover {
+  background-color: color-mix(in srgb, var(--tc) 9%, #16191f);
+}
