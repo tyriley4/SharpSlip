@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { ProfileButton } from '@/components/layout/ProfileButton'
 import { BottomNav } from '@/components/layout/BottomNav'
 
 export function DetailShell({
@@ -16,7 +17,8 @@ export function DetailShell({
         <Link href={backHref} className="text-lg text-text2">
           ←
         </Link>
-        <span className="truncate text-[15px] font-bold text-text">{title}</span>
+        <span className="min-w-0 flex-1 truncate text-[15px] font-bold text-text">{title}</span>
+        <ProfileButton />
       </div>
       <main className="pb-24">{children}</main>
       <BottomNav />

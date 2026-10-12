@@ -1,4 +1,5 @@
 import { BottomNav } from '@/components/layout/BottomNav'
+import { ProfileButton } from '@/components/layout/ProfileButton'
 import { ShellHeader } from '@/components/layout/ShellHeader'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { StockTicker } from '@/components/home/StockTicker'
@@ -12,6 +13,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="min-w-0 flex-1">
           <div className="mx-auto w-full max-w-[540px] md:max-w-none">
             <ShellHeader />
+            <div className="hidden items-center justify-end px-8 pt-5 lg:flex">
+              <ProfileButton />
+            </div>
             <main className="pb-24 md:px-8 md:pb-10 md:pt-7">{children}</main>
           </div>
         </div>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { ProfileButton } from '@/components/layout/ProfileButton'
 import { reportError } from '@/lib/monitoring/sentry'
 
 /** Dark recovery card shown by the route error boundaries: never a bare React error screen. */
@@ -11,7 +12,8 @@ export function SectionError({ error, area }: { error: Error & { digest?: string
   }, [error, area])
 
   return (
-    <div className="flex min-h-[60vh] items-center justify-center bg-background px-6 py-10">
+    <div className="relative flex min-h-[60vh] items-center justify-center bg-background px-6 py-10">
+      <ProfileButton className="absolute right-3.5 top-3.5 md:right-6 md:top-5" />
       <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 text-center">
         <div className="mb-3 text-3xl">⚠️</div>
         <div className="text-sm font-black text-text">Something went wrong loading this section.</div>

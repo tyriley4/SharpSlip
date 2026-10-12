@@ -1,6 +1,7 @@
 import { readableTeamColor } from '@/components/leaders/board/theme'
 import Link from 'next/link'
 import { TrackOnMount } from '@/components/analytics/TrackOnMount'
+import { ProfileButton } from '@/components/layout/ProfileButton'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TeamLink } from '@/components/teams/TeamLink'
 import type { Sport } from '@/lib/sport/SportContext'
@@ -101,6 +102,7 @@ export function BreakdownShell({
               <div className="text-sm font-extrabold text-text2 md:text-xl md:font-black md:text-text">{rightTop}</div>
               <div className="text-[9px] text-muted md:mt-0.5 md:text-[11px]">{rightBottom}</div>
             </div>
+            <ProfileButton />
           </div>
           <div className="flex gap-0 overflow-x-auto border-t border-border pt-2 [scrollbar-width:none] md:gap-1.5 md:pt-3 [&::-webkit-scrollbar]:hidden">
             {tabs.map((t) => {

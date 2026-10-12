@@ -1,6 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import { ProfileButton } from '@/components/layout/ProfileButton'
 import { SportSwitcher } from '@/components/layout/SportSwitcher'
 
 export function ShellHeader() {
@@ -11,9 +12,12 @@ export function ShellHeader() {
 
   return (
     <div className="sticky top-0 z-20 bg-background/95 px-3.5 pt-3.5 backdrop-blur lg:hidden">
-      <div className="mb-3 text-[22px] font-black tracking-tight">
-        <span className="text-text">Sharp</span>
-        <span className="text-accent">Slip</span>
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-[22px] font-black tracking-tight">
+          <span className="text-text">Sharp</span>
+          <span className="text-accent">Slip</span>
+        </div>
+        <ProfileButton />
       </div>
       {!isHome && <SportSwitcher />}
     </div>

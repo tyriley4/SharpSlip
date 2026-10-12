@@ -14,8 +14,10 @@ export const NAV_TABS: NavTab[] = [
   { href: '/account', icon: '👤', label: 'Account' },
 ]
 
-/** Mobile/tablet bottom navigation — Leaders stays reachable from the sidebar and Home links. */
-export const BOTTOM_NAV_TABS: NavTab[] = NAV_TABS.filter((t) => t.href !== '/leaders')
+/** Mobile/tablet bottom navigation: exactly these five, in this order. Account moved to the profile button in the header. */
+export const BOTTOM_NAV_TABS: NavTab[] = ['/', '/games', '/parlay', '/leaders', '/standings']
+  .map((href) => NAV_TABS.find((t) => t.href === href))
+  .filter((t): t is NavTab => !!t)
 
 export function isNavTabActive(pathname: string, href: string) {
   return href === '/' ? pathname === '/' : pathname.startsWith(href)
