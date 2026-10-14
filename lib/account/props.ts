@@ -50,6 +50,8 @@ export function propCategories(sport: BetSport, role: PropRole): PropCategoryOpt
     case 'nhl':
       if (role === 'goalie') return [{ value: 'Saves', label: 'Saves' }]
       return NHL_SKATER_BETTING_CATEGORIES.map((c) => ({ value: c, label: c === 'Shots on Goal' ? 'Shots' : c }))
+    default:
+      return []
   }
 }
 
@@ -64,6 +66,8 @@ export function propThresholds(sport: BetSport, role: PropRole, category: string
       return NBA_BETTING_THRESHOLDS[category as NBABettingCategory] ?? []
     case 'nhl':
       return role === 'goalie' ? NHL_GOALIE_BETTING_THRESHOLDS.Saves : (NHL_SKATER_BETTING_THRESHOLDS[category as NHLSkaterBettingCategory] ?? [])
+    default:
+      return []
   }
 }
 

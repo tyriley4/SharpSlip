@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { DataUnavailable } from '@/components/ui/DataUnavailable'
 import { CAREER_NOTE } from '@/lib/career/seasons'
 import type { BettingSort, RankedRow, SampleMin } from '@/lib/betting/rank'
@@ -10,7 +10,7 @@ import { BettingControls } from './BettingControls'
 import { BoardResults } from './BoardResults'
 import { rowKey } from './format'
 import type { TeamFilterValue } from './teamFilter'
-import { boardRowsFromBetting, type BoardContext } from './types'
+import { boardRowsFromBetting, type BoardContext, type BoardRow } from './types'
 
 /** The shape returned by useBettingRank<BettingLeaderRow>. */
 interface Rank {
@@ -21,6 +21,46 @@ interface Rank {
   setMinGames: (n: SampleMin) => void
   appliedMin: SampleMin
   relaxed: boolean
+}
+
+const CONVICTION_CANDIDATES = 15
+
+interface ConvictionResult {
+  grade: string | null
+  convictionScore: number
+}
+
+/** Conviction against tonight's matchup for the top hit-rate players, fetched only while the Conviction Score sort is on. */
+function useBoardConviction(active: boolean, trend: TrendQuery, rows: RankedRow<BettingLeaderRow>[]) {
+  const candidates = useMemo(() => rows.slice(0, CONVICTION_CANDIDATES), [rows])
+  const key = active && trend.threshold !== undefined ? `${trend.sport}|${trend.sub}|${trend.category}|${trend.threshold}|${candidates.map((r) => rowKey(r)).join(',')}` : ''
+  const [state, setState] = useState<{ key: string; results: Record<string, ConvictionResult | null> } | null>(null)
+
+  useEffect(() => {
+    if (!key || candidates.length === 0 || trend.threshold === undefined) return
+    let cancelled = false
+    const params = new URLSearchParams({
+      sport: trend.sport,
+      category: trend.category,
+      threshold: String(trend.threshold),
+      players: candidates.map((r) => `${r.name}~${r.team}`).join(','),
+    })
+    if (trend.sport === 'mlb' && trend.sub === 'Pitchers') params.set('pitching', '1')
+    fetch(`/api/leaders-conviction?${params.toString()}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`status ${r.status}`))))
+      .then((d: { results: Record<string, ConvictionResult | null> }) => {
+        if (!cancelled) setState({ key, results: d.results })
+      })
+      .catch(() => {
+        if (!cancelled) setState({ key, results: {} })
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+
+  return { loading: !!key && state?.key !== key, results: state?.key === key ? state.results : null, candidates }
 }
 
 /** "Prop Leaders" title, subtitle, career badge and the qualifying-players info chip. */
@@ -40,6 +80,17 @@ function BettingHeader({ count, appliedMin, career }: { count: number; appliedMi
       </span>
     </div>
   )
+}
+
+/** Attaches each player's grade (or why there is none) once convictions have loaded. */
+function withConviction(rows: BoardRow[], results: Record<string, ConvictionResult | null> | null): BoardRow[] {
+  if (!results) return rows
+  return rows.map((r) => {
+    const key = `${r.name}|${r.team}`
+    if (!(key in results)) return { ...r, convictionNote: 'Not graded (outside top hit rates)' }
+    const c = results[key]
+    return c ? { ...r, grade: c.grade, conviction: c.convictionScore, convictionNote: c.grade ? undefined : 'Insufficient data' } : { ...r, grade: null, convictionNote: 'No game tonight' }
+  })
 }
 
 /**
@@ -73,7 +124,18 @@ export function BettingSection({
   teamFilter: TeamFilterValue
   onClear?: () => void
 }) {
-  const rows = rank.rows
+  const convictionOn = rank.sort === 'Conviction Score' && !ctx.isTeamRows
+  const conv = useBoardConviction(convictionOn, trend, rank.rows)
+
+  // Conviction Score re-orders the graded top players by conviction; everyone else keeps hit-rate order after them.
+  const rows = useMemo(() => {
+    if (!convictionOn || !conv.results) return rank.rows
+    const scored = conv.candidates
+      .map((r) => ({ r, c: conv.results![rowKey(r)] ?? null }))
+      .sort((a, b) => (b.c?.grade ? 1 : 0) - (a.c?.grade ? 1 : 0) || (b.c?.convictionScore ?? 0) - (a.c?.convictionScore ?? 0) || b.r.hitRate - a.r.hitRate)
+    const rest = rank.rows.slice(conv.candidates.length)
+    return [...scored.map((x) => x.r), ...rest].map((r, i) => ({ ...r, rank: i + 1 }))
+  }, [convictionOn, conv.results, conv.candidates, rank.rows])
 
   const avgHitRate = useMemo(() => {
     const wins = rows.reduce((s, r) => s + r.wins, 0)
@@ -106,9 +168,9 @@ export function BettingSection({
         {avgHitRate !== null && !loading && <p className="pl-1 text-[11px] text-muted">Avg hit rate: {avgHitRate}% across qualifying players</p>}
       </div>
 
-      <BettingControls sort={rank.sort} onSort={rank.setSort} minGames={rank.minGames} onMinGames={rank.setMinGames} relaxed={rank.relaxed} />
+      <BettingControls sort={rank.sort} onSort={rank.setSort} minGames={rank.minGames} onMinGames={rank.setMinGames} relaxed={rank.relaxed} teams={ctx.isTeamRows} />
 
-      {loading ? (
+      {loading || (convictionOn && conv.loading) ? (
         <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card py-14 text-xs text-muted">
           <span className="h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-accent" />
           {career ? 'Calculating career hit rates (this can take a moment)…' : 'Calculating hit rates…'}
@@ -116,7 +178,7 @@ export function BettingSection({
       ) : error ? (
         <DataUnavailable label={errorLabel} />
       ) : (
-        <BoardResults rows={boardRowsFromBetting(rows)} ctx={fullCtx} teamFilter={teamFilter} onClear={onClear} />
+        <BoardResults rows={withConviction(boardRowsFromBetting(rows), convictionOn ? conv.results : null)} ctx={fullCtx} teamFilter={teamFilter} onClear={onClear} />
       )}
     </div>
   )

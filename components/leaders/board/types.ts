@@ -23,6 +23,11 @@ export interface BoardRow {
   /** The prop's real American price at a sportsbook right now, when one is posted. */
   price?: number
   priceBook?: string
+  /** Conviction Score sort: grade against tonight's matchup (null = ungraded) and the 0-1 score behind it. */
+  grade?: string | null
+  conviction?: number
+  /** Why there is no conviction, e.g. "No game today". */
+  convictionNote?: string
 }
 
 export interface BoardContext {

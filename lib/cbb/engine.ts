@@ -1,4 +1,5 @@
 import type { Edge } from '@/data/breakdown/types'
+import { getAnalysisEdges } from '@/lib/edges/analysisEdges'
 import { getCollegeDirectory, type CollegeTeam } from '@/lib/college/directory'
 import { getGameSummary, getTeamInfo } from '@/lib/espn/api'
 import { cached } from '@/lib/net/ttlCache'
@@ -320,137 +321,6 @@ export function cbbOu(boxes: BbGameBox[]): { o: number; u: number; total: number
 }
 
 // ---------------------------------------------------------------------------
-// Edges
-// ---------------------------------------------------------------------------
-
-export interface CbbEdgeSide {
-  abbr: string
-  name: string
-  rank: number | null
-  season: CbbTeamSeason
-}
-
-type DraftEdge = Omit<Edge, 'id' | 'type'>
-const clamp = (v: number) => Math.max(50, Math.min(96, Math.round(v)))
-
-function scoringAdvantage(t: CbbEdgeSide, o: CbbEdgeSide): DraftEdge | null {
-  if (!(t.season.ppg > 80 && o.season.papg >= 75)) return null
-  return {
-    icon: '🔥',
-    bet: `${t.abbr} — Scoring Advantage`,
-    team: t.abbr,
-    typeLabel: 'Offense',
-    grade: t.season.ppg >= 85 && o.season.papg >= 80 ? 'A' : 'B',
-    conf: clamp(58 + (t.season.ppg - 80) * 1.1 + (o.season.papg - 75) * 0.9),
-    supporting: 2,
-    line: `${t.abbr} ${t.season.ppg.toFixed(1)} pts/g`,
-    altPlay: `${o.abbr} allows ${o.season.papg.toFixed(1)} pts/g`,
-    analysis: `${t.name} scores ${t.season.ppg.toFixed(1)} per game against a ${o.name} defense giving up ${o.season.papg.toFixed(1)} — points should come easily.`,
-    bullets: [`${t.abbr} ${t.season.ppg.toFixed(1)} pts/g vs ${o.abbr} allowing ${o.season.papg.toFixed(1)}`, `${t.abbr} shoots ${t.season.fgPct.toFixed(1)}% from the field`],
-  }
-}
-
-function defensiveWall(t: CbbEdgeSide, o: CbbEdgeSide): DraftEdge | null {
-  if (!(t.season.papg < 60 && t.season.games >= 3)) return null
-  return {
-    icon: '🛡️',
-    bet: `${t.abbr} Defense — Defensive Wall`,
-    team: t.abbr,
-    typeLabel: 'Defense',
-    grade: t.season.papg < 55 ? 'A' : 'B',
-    conf: clamp(60 + (60 - t.season.papg) * 2 + (o.season.ppg < 70 ? 4 : 0)),
-    supporting: 2,
-    line: `${t.abbr} allows ${t.season.papg.toFixed(1)} pts/g`,
-    altPlay: `${o.abbr} scores ${o.season.ppg.toFixed(1)} pts/g`,
-    analysis: `${t.name} holds opponents to ${t.season.papg.toFixed(1)} points per game (${t.season.oppFgPct.toFixed(1)}% shooting against) — a slower, lower-scoring game is the likely script.`,
-    bullets: [`${t.abbr} allows ${t.season.papg.toFixed(1)} pts/g`, `Opponents shoot ${t.season.oppFgPct.toFixed(1)}% vs ${t.abbr}`],
-  }
-}
-
-function homeCourt(h: CbbEdgeSide, a: CbbEdgeSide, neutral: boolean): DraftEdge | null {
-  if (neutral || h.season.homeWinPct === null || h.season.homeGames < 4 || !(h.season.homeWinPct > 80)) return null
-  return {
-    icon: '🏟',
-    bet: `${h.abbr} — Home Court Advantage`,
-    team: h.abbr,
-    typeLabel: 'Situational',
-    grade: h.season.homeWinPct >= 90 ? 'A' : 'B',
-    conf: clamp(57 + (h.season.homeWinPct - 80) * 0.9 + (a.season.awayWinPct !== null ? (50 - a.season.awayWinPct) * 0.15 : 0)),
-    supporting: 2,
-    line: `${h.abbr} home win% ${h.season.homeWinPct.toFixed(0)}%`,
-    altPlay: a.season.awayWinPct !== null ? `${a.abbr} road win% ${a.season.awayWinPct.toFixed(0)}%` : `${a.abbr} on the road`,
-    analysis: `${h.name} wins ${h.season.homeWinPct.toFixed(0)}% of its home games (${h.season.homeGames} played). College crowds and travel make home courts matter.`,
-    bullets: [`${h.abbr} ${h.season.homeWinPct.toFixed(0)}% at home`],
-  }
-}
-
-function rankingAdvantage(t: CbbEdgeSide, o: CbbEdgeSide): DraftEdge | null {
-  if (t.rank === null || o.rank !== null) return null
-  return {
-    icon: '🏅',
-    bet: `${t.abbr} — Ranking Advantage`,
-    team: t.abbr,
-    typeLabel: 'Spread-ML',
-    grade: t.rank <= 10 ? 'A' : 'B',
-    conf: clamp(58 + (26 - t.rank) * 0.7 + (t.season.margin - o.season.margin) * 0.3),
-    supporting: 2,
-    line: `#${t.rank} ${t.name}`,
-    altPlay: `${o.name} unranked`,
-    analysis: `${t.name} is ranked #${t.rank} in the AP poll against an unranked ${o.name}${t.rank <= 10 ? ' — a top-10 team against an unranked opponent is a strong baseline edge' : ''}.`,
-    bullets: [`#${t.rank} ${t.abbr} vs unranked ${o.abbr}`, `${t.abbr} margin ${t.season.margin > 0 ? '+' : ''}${t.season.margin.toFixed(1)} per game`],
-  }
-}
-
-function recentForm(t: CbbEdgeSide, o: CbbEdgeSide): DraftEdge | null {
-  if (t.season.winStreak < 5) return null
-  return {
-    icon: '📈',
-    bet: `${t.abbr} — Recent Form`,
-    team: t.abbr,
-    typeLabel: 'Situational',
-    grade: t.season.winStreak >= 8 ? 'A' : 'B',
-    conf: clamp(56 + (t.season.winStreak - 5) * 3 + (o.season.last5L >= 3 ? 4 : 0)),
-    supporting: 2,
-    line: `${t.abbr} ${t.season.winStreak} straight wins`,
-    altPlay: `${o.abbr} ${o.season.last5W}-${o.season.last5L} in last 5`,
-    analysis: `${t.name} has won ${t.season.winStreak} in a row.`,
-    bullets: [`${t.abbr} W${t.season.winStreak}`, `${o.abbr} ${o.season.last5W}-${o.season.last5L} L5`],
-  }
-}
-
-function totalsEdge(a: CbbEdgeSide, h: CbbEdgeSide): DraftEdge | null {
-  if (a.season.games < 3 || h.season.games < 3) return null
-  const f = a.season.ppg + h.season.ppg
-  const ag = a.season.papg + h.season.papg
-  if (a.season.ppg >= 78 && h.season.ppg >= 78) {
-    return { icon: '🎆', bet: `${a.abbr} @ ${h.abbr} — Shootout Profile`, typeLabel: 'Totals', grade: 'B', conf: clamp(56 + (f - 156) * 0.5), supporting: 2, line: `${f.toFixed(1)} combined pts/g`, altPlay: `${ag.toFixed(1)} combined pts allowed/g`, analysis: `Both offenses score 78+ per game (${a.season.ppg.toFixed(1)} and ${h.season.ppg.toFixed(1)}) — the profile of a high total.`, bullets: [`${a.abbr} ${a.season.ppg.toFixed(1)} / ${h.abbr} ${h.season.ppg.toFixed(1)} pts/g`] }
-  }
-  if (a.season.papg < 66 && h.season.papg < 66) {
-    return { icon: '🧱', bet: `${a.abbr} @ ${h.abbr} — Defensive Struggle`, typeLabel: 'Totals', grade: 'B', conf: clamp(56 + (132 - ag) * 0.6), supporting: 2, line: `${ag.toFixed(1)} combined pts allowed/g`, altPlay: `${f.toFixed(1)} combined pts/g`, analysis: `Both defenses allow under 66 per game (${a.season.papg.toFixed(1)} and ${h.season.papg.toFixed(1)}), pointing toward a lower-scoring game.`, bullets: [`${a.abbr} allows ${a.season.papg.toFixed(1)} / ${h.abbr} allows ${h.season.papg.toFixed(1)}`] }
-  }
-  return null
-}
-
-export function generateCbbEdges(away: CbbEdgeSide, home: CbbEdgeSide, neutral: boolean): Edge[] {
-  const drafts: DraftEdge[] = []
-  const add = (d: DraftEdge | null) => d && drafts.push(d)
-  add(scoringAdvantage(away, home))
-  add(scoringAdvantage(home, away))
-  add(defensiveWall(away, home))
-  add(defensiveWall(home, away))
-  add(homeCourt(home, away, neutral))
-  add(rankingAdvantage(away, home))
-  add(rankingAdvantage(home, away))
-  add(recentForm(away, home))
-  add(recentForm(home, away))
-  add(totalsEdge(away, home))
-  return drafts
-    .sort((a, b) => b.conf - a.conf)
-    .slice(0, 6)
-    .map((d, i) => ({ ...d, id: i + 1, type: d.typeLabel.toLowerCase() }))
-}
-
-// ---------------------------------------------------------------------------
 // Analysis aggregate
 // ---------------------------------------------------------------------------
 
@@ -470,11 +340,7 @@ export async function getCbbAnalysis(gameId: string): Promise<CbbAnalysisData | 
   if (!matchup) return null
   // A finished game only knows what led up to it; show the season's profile as of now, which is a fair proxy for Final games too.
   const [awaySeason, homeSeason] = await Promise.all([getCbbTeamSeason(matchup.away.id, matchup.away.abbr, matchup.season), getCbbTeamSeason(matchup.home.id, matchup.home.abbr, matchup.season)])
-  const edges = generateCbbEdges(
-    { abbr: matchup.away.abbr, name: matchup.away.shortName, rank: matchup.away.rank, season: awaySeason },
-    { abbr: matchup.home.abbr, name: matchup.home.shortName, rank: matchup.home.rank, season: homeSeason },
-    matchup.neutral
-  )
+  const edges = await getAnalysisEdges('cbb', matchup.gameId, matchup.away.abbr, matchup.home.abbr)
   const rec = (s: CbbTeamSeason) => `${s.wins}-${s.losses}`
   const contextStats = [
     { label: `${matchup.away.abbr} Record`, val: matchup.away.record ?? rec(awaySeason), good: awaySeason.wins >= awaySeason.losses },

@@ -207,6 +207,7 @@ async function tonightEdge(ref: CfbPlayerRef, games: CfbPlayerGame[], categories
     propRecord: `${pick.hits}-${pick.n - pick.hits}`,
     hitRate: Math.round((pick.hits / pick.n) * 100),
     last10,
+    prop: { category: pick.category, threshold: pick.threshold },
     lean: `${ref.name} has ${pick.category === 'Anytime TD' ? 'scored a touchdown' : `reached ${label}`} in ${pick.hits} of ${pick.n} games this season. This is a hit-rate read from game logs, not a price — compare it with the line your book posts.`,
     risk,
   }

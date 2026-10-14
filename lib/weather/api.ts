@@ -161,12 +161,12 @@ export function impactNotes(w: WeatherReport, sport: 'mlb' | 'nfl'): ImpactNote[
   const wind = w.windMph ?? 0
   if (sport === 'mlb' && wind >= 10) {
     if (w.windDirection === 'out') notes.push({ text: `Wind ${wind.toFixed(0)} mph blowing out — favorable for HRs and the Over.`, tone: 'over' })
-    else if (w.windDirection === 'in') notes.push({ text: `Wind ${wind.toFixed(0)} mph blowing in — suppresses offense, lean Under.`, tone: 'under' })
+    else if (w.windDirection === 'in') notes.push({ text: `Wind ${wind.toFixed(0)} mph blowing in — suppresses offense; historical data supports the Under.`, tone: 'under' })
     else notes.push({ text: `Wind ${wind.toFixed(0)} mph across the field — watch fly-ball carry.`, tone: 'caution' })
   } else if (sport === 'nfl' && wind >= 15) {
-    notes.push({ text: `Wind ${wind.toFixed(0)} mph — hurts the deep passing game and kicking, lean Under and the run game.`, tone: 'under' })
+    notes.push({ text: `Wind ${wind.toFixed(0)} mph — hurts the deep passing game and kicking; this trend supports the Under and the run game.`, tone: 'under' })
   }
-  if (w.snow) notes.push({ text: 'Snow — a major factor: lean Under and the run game.', tone: 'under' })
+  if (w.snow) notes.push({ text: 'Snow — a major factor; this trend supports the Under and the run game.', tone: 'under' })
   if (w.tempF !== null && w.tempF < 45) notes.push({ text: 'Cold weather game — expect lower scoring.', tone: 'under' })
   if (!w.snow && ((w.precipChancePct ?? 0) >= 30 || w.currentlyRaining)) {
     notes.push({ text: `${w.currentlyRaining ? 'Rain now' : `${w.precipChancePct}% chance of precipitation`} — watch for delays.`, tone: 'caution' })

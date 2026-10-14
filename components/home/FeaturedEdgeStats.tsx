@@ -1,138 +1,97 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { GradeBadge, InsightList, SharpFindBadge } from '@/components/breakdown/BetCard'
 import { BestBetsDrawer } from '@/components/home/BestBetsDrawer'
 import { InjuryDrawer } from '@/components/home/InjuryDrawer'
-import { TeamLink } from '@/components/teams/TeamLink'
 import { BaseCard } from '@/components/ui/Cards'
+import { Drawer } from '@/components/ui/Drawer'
 import { SportBadge } from '@/components/ui/SportBadge'
 import { useAccountData } from '@/lib/account/AccountDataContext'
 import { formatOdds } from '@/lib/account/odds'
+import type { TodayBet } from '@/lib/edges/todaysBets'
 import { filterBestBets } from '@/lib/home/bestBets'
-import type { BestBetPick } from '@/lib/home/bestBetPicks'
 import type { Injury } from '@/lib/home/injuries'
 import type { TopEdgeResult } from '@/lib/home/topEdges'
-import { probTone } from '@/lib/parlay/math'
 import type { Sport } from '@/lib/sport/SportContext'
 
-const ROTATE_MS = 6000
-
-function BestBetCard({ picks, sportFilter, onOpenDrawer }: { picks: BestBetPick[]; sportFilter: Sport | 'all'; onOpenDrawer: () => void }) {
+/** The single highest-conviction bet across today games (or within the selected sport). */
+function BestBetCard({ bets, sportFilter }: { bets: TodayBet[]; sportFilter: Sport | 'all' }) {
   const { settings } = useAccountData()
-  const bets = sportFilter === 'all' ? picks : picks.filter((b) => b.sport === sportFilter)
-  const [index, setIndex] = useState(0)
-  const [paused, setPaused] = useState(false)
+  const [insightsOpen, setInsightsOpen] = useState(false)
+  const pool = sportFilter === 'all' ? bets : bets.filter((b) => b.bet.sport === sportFilter)
+  const top = pool[0]
 
-  useEffect(() => {
-    setIndex(0)
-  }, [sportFilter])
-
-  useEffect(() => {
-    if (paused || bets.length < 2) return
-    const timer = setInterval(() => setIndex((i) => (i + 1) % bets.length), ROTATE_MS)
-    return () => clearInterval(timer)
-  }, [paused, bets.length])
-
-  if (bets.length === 0) {
+  if (!top) {
     return (
       <BaseCard className="flex flex-col justify-center !p-3.5">
         <div className="flex items-center gap-1.5 text-[11px] font-extrabold text-text">
           <span>🎯</span> Today&apos;s Best Bet
         </div>
-        <p className="mt-1 text-[11px] text-muted">No priced pick for {sportFilter === 'all' ? 'today' : 'this sport'} yet — lines post closer to game time.</p>
+        <p className="mt-1 text-[11px] text-muted">No graded bet for {sportFilter === 'all' ? 'today' : 'this sport'} yet — grades appear once the evidence supports a bet.</p>
       </BaseCard>
     )
   }
 
-  const bet = bets[index % bets.length]
-  const tone = probTone(bet.hitRate)
-  const edgeColor = bet.edgePts > 0 ? 'text-win' : 'text-muted'
-
+  const b = top.bet
+  const shown = b.insights.filter((i) => i.description).slice(0, 2)
   return (
-    <div
-      className="rounded-[14px] border border-grade-a/30 p-3.5 shadow-[0_0_16px_rgba(0,229,160,0.06)]"
-      style={{ background: 'linear-gradient(135deg, #111318 0%, #0D1A14 100%)' }}
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-    >
+    <div className="rounded-[14px] border border-grade-a/30 p-3.5 shadow-[0_0_16px_rgba(0,229,160,0.06)]" style={{ background: 'linear-gradient(135deg, #111318 0%, #0D1A14 100%)' }}>
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="flex items-center gap-1.5 text-[12px] font-extrabold text-text">
             <span>🎯</span> Today&apos;s Best Bet
           </div>
-          <div className="text-[10px] text-muted">Top-rated insight, priced at a real sportsbook line</div>
+          <div className="text-[10px] text-muted">Highest conviction across today&apos;s games</div>
         </div>
-        <SportBadge sport={bet.sport} />
+        <SportBadge sport={b.sport} />
       </div>
 
-      <div className="mt-2.5 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate text-[14px] font-extrabold text-text" title={bet.pick}>
-            <TeamLink sport={bet.sport} abbr={bet.team} className="hover:text-accent hover:underline">
-              {bet.team}
-            </TeamLink>{' '}
-            Moneyline <span className="text-[11px] font-semibold text-muted">· {bet.matchup}</span>
+      <div className="mt-2.5 flex items-center gap-3">
+        <GradeBadge grade={b.grade} size="lg" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[11px] font-semibold text-muted">{b.matchup}</div>
+          <div className="truncate text-[14px] font-extrabold text-text" title={b.description}>
+            {b.description}
           </div>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span className="stat-number text-[13px] text-accent">{formatOdds(bet.oddsAmerican, settings.oddsFormat)}</span>
-            <span className="text-[10px] text-muted">{bet.book}</span>
-            <Link href={bet.href} className="text-[11px] font-semibold text-accent hover:underline">
-              Game breakdown →
-            </Link>
-          </div>
-          <button onClick={onOpenDrawer} className="mt-0.5 text-[11px] font-semibold text-accent hover:underline">
-            {bet.trends} supporting trend{bet.trends === 1 ? '' : 's'} →
-          </button>
-        </div>
-        <div className="shrink-0 text-right">
-          <div className="stat-featured leading-none" style={{ color: tone.color }}>
-            {bet.hitRate}%
-          </div>
-          <div className="mt-0.5 text-[9px] text-muted">est. hit rate</div>
-          <div className={`mt-1 text-[10px] font-bold ${edgeColor}`} title={`Market implies ${bet.marketProb}% (no vig)`}>
-            {bet.edgePts > 0 ? '+' : ''}
-            {bet.edgePts} pts vs market
+            {b.odds !== null && (
+              <span className="stat-number text-[13px] text-accent">
+                {formatOdds(b.odds, settings.oddsFormat)} <span className="text-[10px] font-semibold text-muted">{b.book}</span>
+              </span>
+            )}
+            {b.historicalHitRate !== null && <span className="text-[11px] text-text2">{Math.round(b.historicalHitRate)}% historical</span>}
+            {b.isSharpFind && <SharpFindBadge />}
           </div>
         </div>
       </div>
 
-      <div className="mt-2.5 flex items-center justify-between gap-2">
-        <p className="text-[9px] leading-snug text-muted">
-          Hit rate is estimated from the insight&apos;s confidence; the price is the book&apos;s real line. Not a guarantee.
-        </p>
-        {bets.length > 1 && (
-          <div className="flex shrink-0 gap-1" role="tablist" aria-label="Best bet suggestions">
-            {bets.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => setIndex(i)}
-                aria-label={`Show suggestion ${i + 1}`}
-                className={`h-1.5 rounded-full transition-all ${i === index % bets.length ? 'w-4 bg-grade-a' : 'w-1.5 bg-border2'}`}
-              />
-            ))}
-          </div>
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+        {shown.length > 0 && (
+          <button onClick={() => setInsightsOpen(true)} className="text-[11px] font-semibold text-accent hover:underline">
+            {shown.length} supporting insight{shown.length === 1 ? '' : 's'} →
+          </button>
         )}
+        <Link href={top.href} className="text-[11px] font-semibold text-accent hover:underline">
+          View full breakdown →
+        </Link>
       </div>
+      <p className="mt-2 text-[9px] leading-snug text-muted">Grades reflect statistical evidence and historical patterns, not a guarantee. Not betting advice.</p>
+
+      {insightsOpen && (
+        <Drawer title={b.description} subtitle={`${b.matchup} · Grade ${b.grade}`} onClose={() => setInsightsOpen(false)}>
+          <InsightList insights={shown} />
+          <Link href={top.href} className="mt-4 block text-[11px] font-semibold text-accent hover:underline" onClick={() => setInsightsOpen(false)}>
+            View full breakdown →
+          </Link>
+        </Drawer>
+      )}
     </div>
   )
 }
 
-function GatewayCard({
-  icon,
-  count,
-  label,
-  borderClass,
-  onClick,
-  href,
-}: {
-  icon: string
-  count: number
-  label: string
-  borderClass: string
-  onClick?: () => void
-  href?: string
-}) {
+function GatewayCard({ icon, count, label, borderClass, onClick, href }: { icon: string; count: number; label: string; borderClass: string; onClick?: () => void; href?: string }) {
   const content = (
     <BaseCard className={`flex h-full w-full flex-col !p-3 ${borderClass}`}>
       <div className="flex items-center justify-between">
@@ -158,17 +117,17 @@ function GatewayCard({
   )
 }
 
-export function FeaturedEdgeStats({ allEdges, injuries, bestBetPicks, sportFilter }: { allEdges: TopEdgeResult[]; injuries: Injury[]; bestBetPicks: BestBetPick[]; sportFilter: Sport | 'all' }) {
+export function FeaturedEdgeStats({ allEdges, injuries, todayBets, sportFilter }: { allEdges: TopEdgeResult[]; injuries: Injury[]; todayBets: TodayBet[]; sportFilter: Sport | 'all' }) {
   const { settings } = useAccountData()
   const [drawer, setDrawer] = useState<'bestBets' | 'injuries' | null>(null)
 
-  const { results: bestBets } = filterBestBets(allEdges, settings)
+  const { results: bestBets } = filterBestBets(todayBets, settings)
 
   return (
     <>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch lg:gap-5">
         <div className="lg:flex-1">
-          <BestBetCard picks={bestBetPicks} sportFilter={sportFilter} onOpenDrawer={() => setDrawer('bestBets')} />
+          <BestBetCard bets={todayBets} sportFilter={sportFilter} />
         </div>
 
         <div className="grid grid-cols-3 gap-2 lg:w-[45%] lg:gap-2.5">
@@ -178,7 +137,7 @@ export function FeaturedEdgeStats({ allEdges, injuries, bestBetPicks, sportFilte
         </div>
       </div>
 
-      {drawer === 'bestBets' && <BestBetsDrawer edges={allEdges} onClose={() => setDrawer(null)} />}
+      {drawer === 'bestBets' && <BestBetsDrawer bets={todayBets} onClose={() => setDrawer(null)} />}
       {drawer === 'injuries' && <InjuryDrawer injuries={injuries} onClose={() => setDrawer(null)} />}
     </>
   )

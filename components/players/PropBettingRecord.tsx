@@ -1,5 +1,6 @@
 'use client'
 
+import { PropConviction, usePlayerConviction, type ConvictionPlayer } from '@/components/players/PropConviction'
 import { CareerProvider, SeasonVsCareer } from '@/components/players/CareerCompare'
 import { useEffect, useState } from 'react'
 import {
@@ -30,10 +31,12 @@ function PropCategoryCard({
   playerId,
   group,
   category,
+  player,
 }: {
   playerId: number
   group: 'hitting' | 'pitching'
   category: PropCategory
+  player?: ConvictionPlayer
 }) {
   const thresholds = thresholdsFor(category, group)
   const [threshold, setThreshold] = useState(thresholds[0])
@@ -41,6 +44,7 @@ function PropCategoryCard({
   const [cache, setCache] = useState<Record<number, CategoryStatsResponse>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(false)
+  const conviction = usePlayerConviction(expanded && player ? { sport: 'mlb', name: player.name, team: player.team, category, thresholds, pitching: group === 'pitching' } : null)
 
   useEffect(() => {
     if (cache[threshold]) return
@@ -109,10 +113,17 @@ function PropCategoryCard({
                   }`}
                 >
                   {formatThreshold(t)}
+                  {conviction.data?.best === t && ' ★'}
                 </button>
               )
             })}
           </div>
+
+          {player && (
+            <div className="mb-2.5">
+              <PropConviction conviction={conviction} selected={threshold} onSelect={setThreshold} format={formatThreshold} />
+            </div>
+          )}
 
           {loading && !stats ? (
             <div className="flex items-center gap-2 py-3 text-[11px] text-muted">
@@ -155,7 +166,7 @@ function PropCategoryCard({
   )
 }
 
-export function PropBettingRecord({ playerId, group }: { playerId: number; group: 'hitting' | 'pitching' }) {
+export function PropBettingRecord({ playerId, group, player }: { playerId: number; group: 'hitting' | 'pitching'; player?: ConvictionPlayer }) {
   const categories = group === 'hitting' ? HITTER_PROP_CATEGORIES : PITCHER_PROP_CATEGORIES
 
   return (
@@ -166,7 +177,7 @@ export function PropBettingRecord({ playerId, group }: { playerId: number; group
       <CareerProvider params={{ sport: 'mlb', playerId: String(playerId), group }}>
         <div className="flex flex-col gap-2">
           {categories.map((category) => (
-            <PropCategoryCard key={category} playerId={playerId} group={group} category={category} />
+            <PropCategoryCard key={category} playerId={playerId} group={group} category={category} player={player} />
           ))}
         </div>
       </CareerProvider>

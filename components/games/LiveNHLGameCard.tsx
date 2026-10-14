@@ -45,9 +45,6 @@ export function LiveNHLGameCard({ game }: { game: LiveNhlGame }) {
               {game.status === 'Final' ? 'FINAL' : formatPuckDrop(game.startTimeUTC)}
             </div>
           )}
-          {game.hasEdge && (
-            <span className="rounded-full border border-accent/40 bg-accent/15 px-1.5 py-0.5 text-[9px] font-bold text-accent">⚡ Edge</span>
-          )}
         </div>
       </div>
       <div className="flex items-center justify-between text-[10px] text-muted">

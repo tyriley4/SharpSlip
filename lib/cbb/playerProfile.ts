@@ -182,6 +182,7 @@ async function tonightEdge(ref: CbbPlayerRef, games: CbbCalcGame[], teamId: stri
     propRecord: `${pick.hits}-${pick.n - pick.hits}`,
     hitRate: Math.round((pick.hits / pick.n) * 100),
     last10,
+    prop: { category: pick.category, threshold: pick.threshold },
     lean: `${ref.name} has reached ${label} in ${pick.hits} of ${pick.n} games. This is a hit-rate read from game logs, not a price — compare it with the line your book posts.`,
     risk: pick.n < 10 ? `Small sample — only ${pick.n} games.` : last10[0] === false ? 'Missed this mark in the most recent game.' : 'Minutes and foul trouble can swing a college player’s line quickly.',
   }

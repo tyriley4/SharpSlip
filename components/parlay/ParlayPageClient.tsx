@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { AddLegsPanel } from '@/components/parlay/AddLegsPanel'
+import { TrackBetModal } from '@/components/parlay/TrackBetModal'
 import { ProbabilityBar } from '@/components/parlay/ProbabilityBar'
 import { SuggestedParlays } from '@/components/parlay/SuggestedParlays'
 import { AppShell } from '@/components/layout/AppShell'
@@ -22,6 +23,7 @@ export function ParlayPageClient({ games }: { games: ParlayGame[] }) {
   const { legs, removeLeg, clear } = useParlay()
   const { settings } = useAccountData()
   const [stakeText, setStakeText] = useState('10')
+  const [tracking, setTracking] = useState(false)
 
   const pool = useMemo(() => buildPool(games), [games])
 
@@ -91,8 +93,16 @@ export function ParlayPageClient({ games }: { games: ParlayGame[] }) {
 
               <p className="text-[10px] leading-relaxed text-muted">
                 Odds are the real prices from the sportsbook shown on each leg, multiplied together. Probabilities are the market&apos;s no-vig
-                implied chances (or our estimate for suggested legs), and legs are treated as independent.
+                implied chances (or our estimate for suggested legs), and legs are treated as independent. A leg marked Estimated line uses a standard -110 stand-in rather than a posted price.
               </p>
+
+              <button
+                onClick={() => setTracking(true)}
+                disabled={legs.length === 0}
+                className="rounded-xl border border-accent/40 bg-accent/10 px-4 py-2.5 text-[13px] font-bold text-accent transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                📝 Track Bet{legs.length > 1 ? ` (${legs.length}-leg parlay)` : legs.length === 1 ? ' (straight bet)' : ''}
+              </button>
 
               <div className="flex flex-col gap-3 rounded-[14px] border border-border bg-card p-3.5">
                 <div className="grid grid-cols-2 gap-2">
@@ -147,6 +157,7 @@ export function ParlayPageClient({ games }: { games: ParlayGame[] }) {
 
         <SuggestedParlays pool={pool} />
       </div>
+      {tracking && legs.length > 0 && <TrackBetModal legs={legs} initialStake={stakeText} onClose={() => setTracking(false)} onLogged={() => undefined} />}
     </AppShell>
   )
 }

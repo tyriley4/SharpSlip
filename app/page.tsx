@@ -5,7 +5,7 @@ import { getCondensedMovers } from '@/lib/home/movers'
 import { deriveAllEdges, deriveTopEdges } from '@/lib/home/topEdges'
 import { deriveTopGames } from '@/lib/home/topGames'
 import { getCfbForHome } from '@/lib/espn/live'
-import { getBestBetPicks } from '@/lib/home/bestBetPicks'
+import { getTodaysBets } from '@/lib/edges/todaysBets'
 import { getCbbHomeInfo } from '@/lib/home/cbbHome'
 import { getHomeInjuries } from '@/lib/home/injuries'
 import { getWeatherWatchCards } from '@/lib/home/weather'
@@ -25,8 +25,8 @@ export default async function Home() {
 
   const topEdges = deriveTopEdges(breakdowns)
   const allEdges = deriveAllEdges(breakdowns)
-  const bestBetPicks = await getBestBetPicks(allEdges).catch((err) => {
-    console.error('[home] best bet picks failed', err)
+  const todayBets = await getTodaysBets().catch((err) => {
+    console.error('[home] best bets failed', err)
     return []
   })
   const topGames = deriveTopGames(breakdowns)
@@ -38,7 +38,7 @@ export default async function Home() {
       topGames={topGames}
       weatherCards={weatherCards}
       injuries={injuries}
-      bestBetPicks={bestBetPicks}
+      todayBets={todayBets}
       cfb={cfb}
       articles={articles}
       movers={movers}

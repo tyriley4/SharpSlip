@@ -8,7 +8,7 @@ import { createBet, updateBet } from '@/lib/account/bets'
 import { BET_RESULTS, BET_SPORTS, BET_TYPES, type Bet, type BetResult, type BetSport, type BetType } from '@/lib/account/types'
 import { useAuth } from '@/lib/auth/AuthContext'
 
-const SPORT_LABEL: Record<BetSport, string> = { mlb: 'MLB', nfl: 'NFL', nba: 'NBA', nhl: 'NHL' }
+const SPORT_LABEL: Record<BetSport, string> = { mlb: 'MLB', nfl: 'NFL', cfb: 'CFB', nba: 'NBA', cbb: 'CBB', nhl: 'NHL' }
 const RESULT_LABEL: Record<BetResult, string> = { pending: 'Pending', win: 'Win', loss: 'Loss', push: 'Push' }
 
 export function BetForm({ bet, onClose, onSaved }: { bet?: Bet; onClose: () => void; onSaved: (bet: Bet) => void }) {

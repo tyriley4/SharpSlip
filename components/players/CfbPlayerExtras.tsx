@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { PropConviction, usePlayerConviction, type ConvictionPlayer } from '@/components/players/PropConviction'
 import { CBB_BETTING_THRESHOLDS, formatCbbThreshold } from '@/lib/college/cbbProps'
 import { CFB_BETTING_THRESHOLDS, formatCfbThreshold } from '@/lib/college/cfbProps'
 import type { StatLine } from '@/lib/players/types'
@@ -36,7 +37,7 @@ export function CfbSeasonStats({ stats, games, label = 'SEASON STATS' }: { stats
 }
 
 /** Pick a prop and a line; see how often this player has cleared it, game by game. */
-export function CfbPropCalculator({ categories, games, color, league = 'cfb', caption = 'Hit rates from this season’s game logs' }: { categories: string[]; games: CalcGame[]; color: string; league?: 'cfb' | 'cbb'; caption?: string }) {
+export function CfbPropCalculator({ categories, games, color, league = 'cfb', caption = 'Hit rates from this season’s game logs', player }: { categories: string[]; games: CalcGame[]; color: string; league?: 'cfb' | 'cbb'; caption?: string; player?: ConvictionPlayer }) {
   const table = league === 'cbb' ? CBB_BETTING_THRESHOLDS : CFB_BETTING_THRESHOLDS
   const format = league === 'cbb' ? formatCbbThreshold : formatCfbThreshold
   const [category, setCategory] = useState(categories[0])
@@ -49,6 +50,8 @@ export function CfbPropCalculator({ categories, games, color, league = 'cfb', ca
     [games, category, venue]
   )
   const t = thresholds.includes(threshold) ? threshold : thresholds[0]
+  const conviction = usePlayerConviction(player && thresholds.length > 0 ? { sport: league, name: player.name, team: player.team, category, thresholds } : null)
+  const fmt = (n: number) => format(category, n)
   const hits = sample.filter((g) => (g.values[category] ?? 0) >= t).length
   const rate = sample.length > 0 ? Math.round((hits / sample.length) * 100) : null
   const rateColor = rate === null ? '#6B7280' : rate >= 65 ? '#00E5A0' : rate >= 50 ? '#FFB800' : '#EF4444'
@@ -85,6 +88,7 @@ export function CfbPropCalculator({ categories, games, color, league = 'cfb', ca
             className={`rounded-full border px-3 py-1.5 text-[12px] font-extrabold transition-colors ${t === x ? 'border-accent bg-accent text-white' : 'border-border bg-card3 text-text2 hover:text-text'}`}
           >
             {format(category, x)}
+            {conviction.data?.best === x && ' ★'}
           </button>
         ))}
       </div>
@@ -95,6 +99,12 @@ export function CfbPropCalculator({ categories, games, color, league = 'cfb', ca
           </button>
         ))}
       </div>
+
+      {player && (
+        <div className="mt-3">
+          <PropConviction conviction={conviction} selected={t} onSelect={setThreshold} format={fmt} />
+        </div>
+      )}
 
       <div className="mt-4 flex items-end justify-between gap-3">
         <div>

@@ -49,7 +49,7 @@ export function HistorySection({ bp }: { bp: BallparkData }) {
           <div className="mb-1 text-[11px] text-muted">3-Year Over Rate</div>
           <div className="mb-0.5 text-lg font-black text-accent">{avgOver}%</div>
           <div className="text-[9px] text-text2">
-            {avgOver >= 52 ? 'Slight lean toward over historically' : 'Slight lean toward under historically'}
+            {avgOver >= 52 ? 'Historical data modestly supports the over' : 'Historical data modestly supports the under'}
           </div>
         </div>
         <div className="rounded-xl border border-border bg-card p-3">

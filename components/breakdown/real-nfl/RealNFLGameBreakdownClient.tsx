@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import { AnalysisContent } from '@/components/breakdown/AnalysisContent'
-import { LinesTab } from '@/components/breakdown/LinesTab'
+import { ANALYSIS_CATEGORIES } from '@/lib/edges/analysisCategories'
+import { RecommendedBetsTab } from '@/components/breakdown/RecommendedBetsTab'
 import { RealNFLDefenseTab } from '@/components/breakdown/real-nfl/RealNFLDefenseTab'
 import { RealNFLLiveTab } from '@/components/breakdown/real-nfl/RealNFLLiveTab'
 import { RealNFLMatchupOverview } from '@/components/breakdown/real-nfl/RealNFLMatchupOverview'
@@ -19,7 +20,7 @@ import type { NFLAnalysisData } from '@/lib/nfl/gameBreakdown'
 
 const BASE_TABS: BreakdownTab[] = [
   { id: 'Analysis', icon: '🤖' },
-  { id: 'Lines', icon: '💲' },
+  { id: 'Recommended Bets', icon: '🎯' },
   { id: 'Trends', icon: '📊' },
   { id: 'Summary', icon: '📋' },
   { id: 'Passing', icon: '🏈' },
@@ -31,7 +32,7 @@ const BASE_TABS: BreakdownTab[] = [
 
 const LIVE_TAB: BreakdownTab = { id: 'Live', icon: '🔴' }
 
-const EDGE_CATEGORIES = ['Spread-ML', 'Totals', 'Player Props', 'Passing', 'Rushing', 'Defense', 'Situational']
+const EDGE_CATEGORIES = ANALYSIS_CATEGORIES.nfl
 
 function formatKickoff(gameday: string, gametime: string): string {
   if (!gameday) return 'TBD'
@@ -93,8 +94,8 @@ export function RealNFLGameBreakdownClient({ backHref, data }: { backHref: strin
         />
       )}
 
-      {tab === 'Lines' && (
-        <LinesTab sport="nfl" gameId={matchup.gameId} awayAbbr={matchup.away.abbr} homeAbbr={matchup.home.abbr} />
+      {tab === 'Recommended Bets' && (
+        <RecommendedBetsTab sport="nfl" gameId={matchup.gameId} awayAbbr={matchup.away.abbr} homeAbbr={matchup.home.abbr} />
       )}
 
       {tab === 'Trends' && <RealNFLTrendsTab gameId={matchup.gameId} />}

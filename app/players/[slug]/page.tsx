@@ -9,6 +9,7 @@ import { PlayerComingSoon } from '@/components/players/PlayerComingSoon'
 import { PlayerHeader } from '@/components/players/PlayerHeader'
 import { PropBettingRecord } from '@/components/players/PropBettingRecord'
 import { RecentFormTable } from '@/components/players/RecentFormTable'
+import { getPlayerConviction } from '@/lib/edges/playerEdge'
 import { TonightEdgeCard } from '@/components/players/TonightEdgeCard'
 import { MLB_TEAM_COLORS } from '@/data/mlb/teamColors'
 import { NBA_TEAM_COLORS } from '@/data/nba/teamColors'
@@ -218,6 +219,17 @@ export default async function PlayerPage({
             ? { sport: 'nfl', playerId: nflProp.id }
             : undefined
 
+  const te = player.tonight_edge
+  if (te?.prop) {
+    try {
+      const c = await getPlayerConviction({ sport: player.sport, name: player.name, team: player.team, category: te.prop.category, thresholds: [te.prop.threshold], pitching: bettingGroup === 'pitching' })
+      te.conviction = c.available && c.thresholds[0] ? { matchup: c.matchup, href: c.href, row: c.thresholds[0] } : { unavailable: c.reason ?? 'Analysis unavailable' }
+    } catch (err) {
+      console.error(`[PlayerPage] conviction lookup failed for "${params.slug}":`, err)
+    }
+  }
+
+  const convictionPlayer = { name: player.name, team: player.team }
   const hasTonightEdge = Object.keys(player.tonight_edge ?? {}).length > 0
   const hasRecentForm = (player.recent_form ?? []).length > 0
   const hasPropRecords = bettingPlayerId !== null
@@ -242,22 +254,22 @@ export default async function PlayerPage({
           <RecentFormTable games={player.recent_form} sport={player.sport} position={player.position} />
         )}
 
-        {cbb && <CfbPropCalculator categories={cbb.categories} games={cbb.games} color={cbb.teamColor} league="cbb" caption={`Hit rates from the ${cbb.seasonLabel} game logs`} />}
+        {cbb && <CfbPropCalculator categories={cbb.categories} games={cbb.games} color={cbb.teamColor} league="cbb" caption={`Hit rates from the ${cbb.seasonLabel} game logs`} player={convictionPlayer} />}
 
-        {nflProp && <NflPropBettingRecord playerId={nflProp.id} sub={nflProp.sub} />}
+        {nflProp && <NflPropBettingRecord playerId={nflProp.id} sub={nflProp.sub} player={convictionPlayer} />}
 
-        {cfb && cfb.categories.length > 0 && <CfbPropCalculator categories={cfb.categories} games={cfb.games} color={cfb.teamColor} />}
+        {cfb && cfb.categories.length > 0 && <CfbPropCalculator categories={cfb.categories} games={cfb.games} color={cfb.teamColor} player={convictionPlayer} />}
 
         {hasPropRecords && bettingPlayerId !== null && player.sport === 'nba' && (
-          <NbaPropBettingRecord playerId={bettingPlayerId} />
+          <NbaPropBettingRecord playerId={bettingPlayerId} player={convictionPlayer} />
         )}
 
         {hasPropRecords && bettingPlayerId !== null && player.sport === 'nhl' && (
-          <NhlPropBettingRecord playerId={bettingPlayerId} isGoalie={isNhlGoalie} />
+          <NhlPropBettingRecord playerId={bettingPlayerId} isGoalie={isNhlGoalie} player={convictionPlayer} />
         )}
 
         {hasPropRecords && bettingPlayerId !== null && player.sport === 'mlb' && (
-          <PropBettingRecord playerId={bettingPlayerId} group={bettingGroup} />
+          <PropBettingRecord playerId={bettingPlayerId} group={bettingGroup} player={convictionPlayer} />
         )}
 
         {hasMatchupSplits && (

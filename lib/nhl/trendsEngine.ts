@@ -66,7 +66,7 @@ async function goalieTrends(abbr: string): Promise<NHLTrend[]> {
     trends.push({ id: 0, category: 'Goalie', title: `${abbr} — Goalie on Fire`, stat: `${(savePct * 100).toFixed(1)}% SV% last ${last5.length} starts`, note: `${goalie.name} has been elite in net recently.`, hot: savePct > 0.945 })
   }
   if (savePct < 0.88 && totalShots > 0) {
-    trends.push({ id: 0, category: 'Goalie', title: `${abbr} — Goalie Struggling`, stat: `${(savePct * 100).toFixed(1)}% SV% last ${last5.length} starts`, note: `${goalie.name} has allowed more than usual — lean the opposing offense.`, hot: savePct < 0.86 })
+    trends.push({ id: 0, category: 'Goalie', title: `${abbr} — Goalie Struggling`, stat: `${(savePct * 100).toFixed(1)}% SV% last ${last5.length} starts`, note: `${goalie.name} has allowed more than usual — the data supports the opposing offense.`, hot: savePct < 0.86 })
   }
 
   return trends

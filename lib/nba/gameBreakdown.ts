@@ -12,8 +12,7 @@ import {
   type NBATeamStats,
 } from './api'
 import { NBA_CURRENT_SEASON, NBA_TEAM_NAMES, nbaAbbrFromTeamId } from './divisions'
-import { generateNBAEdges, type EdgeNbaTeamInput, type NBAEdgeContext } from './edgeEngine'
-
+import { getAnalysisEdges } from '@/lib/edges/analysisEdges'
 // ---------------------------------------------------------------------------
 // Matchup
 // ---------------------------------------------------------------------------
@@ -134,24 +133,6 @@ function last10FromRecord(rec: string | undefined): { wins: number; losses: numb
   return { wins: w || 0, losses: l || 0 }
 }
 
-function toEdgeTeam(abbr: string, stats: NBATeamStats | null, standing: NBAStandingsTeam | null, rest: { daysRest: number | null; backToBack: boolean }): EdgeNbaTeamInput {
-  const last10 = last10FromRecord(standing?.last10)
-  return {
-    abbr,
-    pts: stats?.pts ?? 0,
-    oppPts: stats?.oppPts ?? 0,
-    fg3Pct: stats?.fg3Pct ?? 0,
-    tov: stats?.tov ?? 0,
-    oppTov: stats?.oppTov ?? 0,
-    homeWinPct: winPctFromRecord(standing?.home),
-    awayWinPct: winPctFromRecord(standing?.away),
-    last10Wins: last10.wins,
-    last10Losses: last10.losses,
-    daysRest: rest.daysRest,
-    backToBack: rest.backToBack,
-  }
-}
-
 export async function getNBAAnalysisData(gameId: string): Promise<NBAAnalysisData | null> {
   const matchup = await getNBAGameMatchup(gameId)
   if (!matchup) return null
@@ -173,11 +154,7 @@ export async function getNBAAnalysisData(gameId: string): Promise<NBAAnalysisDat
   const awayStanding = findStanding(standings, matchup.away.teamId)
   const homeStanding = findStanding(standings, matchup.home.teamId)
 
-  const edgeCtx: NBAEdgeContext = {
-    away: toEdgeTeam(matchup.away.abbr, awayStats, awayStanding, awayRest),
-    home: toEdgeTeam(matchup.home.abbr, homeStats, homeStanding, homeRest),
-  }
-  const edges = generateNBAEdges(edgeCtx)
+  const edges = await getAnalysisEdges('nba', matchup.gameId, matchup.away.abbr, matchup.home.abbr)
 
   const contextStats = [
     awayStanding ? { label: `${matchup.away.abbr} Record`, val: `${awayStanding.wins}-${awayStanding.losses}`, good: awayStanding.wins >= awayStanding.losses } : null,

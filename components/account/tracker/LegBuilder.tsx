@@ -8,7 +8,7 @@ import { GamePicker } from './GamePicker'
 import { LegDetails } from './LegDetails'
 import { FieldLabel, Pill } from './ui'
 
-const SPORT_LABEL: Record<BetSport, string> = { mlb: 'MLB', nfl: 'NFL', nba: 'NBA', nhl: 'NHL' }
+const SPORT_LABEL: Record<BetSport, string> = { mlb: 'MLB', nfl: 'NFL', cfb: 'CFB', nba: 'NBA', cbb: 'CBB', nhl: 'NHL' }
 
 /** Builds one leg of a parlay or teaser: sport → game → market → details, then "Add leg". */
 export function LegBuilder({

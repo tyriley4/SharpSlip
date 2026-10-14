@@ -1,4 +1,5 @@
-export type BetSport = 'mlb' | 'nfl' | 'nba' | 'nhl'
+/** Sports a bet can be logged against. College bets arrive from the parlay builder; the manual entry form lists the pro leagues. */
+export type BetSport = 'mlb' | 'nfl' | 'cfb' | 'nba' | 'cbb' | 'nhl'
 export const BET_SPORTS: BetSport[] = ['mlb', 'nfl', 'nba', 'nhl']
 
 export const BET_TYPES = ['Moneyline', 'Spread', 'Total', 'Player Prop', 'Parlay', 'Teaser'] as const

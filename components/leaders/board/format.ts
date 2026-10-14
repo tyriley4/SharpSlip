@@ -30,6 +30,10 @@ export function bettingDisplay(row: BoardRow, mode: BettingSort): BettingDisplay
   if (mode === 'W-L Record') {
     return { value: `${wins}-${losses}`, color: WHITE, secondary: `${hitRate}% hit rate` }
   }
+  if (mode === 'Conviction Score') {
+    const color = row.grade === 'A' ? GREEN : row.grade === 'B' ? '#3B9EFF' : row.grade === 'C' ? '#FFB800' : '#8B909A'
+    return { value: row.grade ?? '—', color, secondary: row.grade ? `${hitRate}% hit rate · ${wins}-${losses}` : row.convictionNote ?? `${hitRate}% hit rate · not graded` }
+  }
   if (mode === 'Most Profitable') {
     const profit = row.profit ?? 0
     const priced = row.price !== undefined ? ` · ◆ ${row.price > 0 ? '+' : ''}${row.price}` : ''

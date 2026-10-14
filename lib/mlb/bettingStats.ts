@@ -63,7 +63,7 @@ export function hitRateTone(hitRate: number): 'green' | 'neutral' | 'red' {
 
 export function leanForHitRate(hitRate: number): string {
   if (hitRate >= 70) return 'Strong historical hit rate at this line'
-  if (hitRate >= 60) return 'Historical data favors the over'
-  if (hitRate >= 50) return 'Slight historical edge to the over'
-  return 'Historical data favors the under'
+  if (hitRate >= 60) return 'Historical data supports the over'
+  if (hitRate >= 50) return 'Historical data modestly supports the over'
+  return 'Historical data supports the under'
 }

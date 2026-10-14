@@ -14,7 +14,7 @@ import {
   getTeamStats,
 } from './api'
 import { computeHitRate, mostRecentFirst } from './bettingStats'
-import { generateEdges, type EdgeContext } from './edgeEngine'
+import { getAnalysisEdges } from '@/lib/edges/analysisEdges'
 
 // ---------------------------------------------------------------------------
 // Game matchup (status, score, inning, probable pitchers, venue, weather)
@@ -573,42 +573,7 @@ export async function getRealGameBreakdown(gamePk: number): Promise<RealGameBrea
       getLeagueHittingAverages(),
     ])
 
-  const edgeCtx: EdgeContext = {
-    away: {
-      abbr: matchup.away.abbr,
-      battingAvg: Number(awayHitting?.avg ?? 0),
-      kPct: awayHitting?.kPct ?? 0,
-      runsPerGame: awayHitting?.runsPerGame ?? 0,
-      pitchingEra: awayPitchingEra ?? 0,
-      bullpenEra: awayBullpenEra,
-      homeWinPct: awayStandings ? winPct(awayStandings.homeWins, awayStandings.homeLosses) : null,
-      awayWinPct: awayStandings ? winPct(awayStandings.awayWins, awayStandings.awayLosses) : null,
-      last10Wins: awayStandings?.last10Wins ?? 0,
-      last10Losses: awayStandings?.last10Losses ?? 0,
-      isHome: false,
-    },
-    home: {
-      abbr: matchup.home.abbr,
-      battingAvg: Number(homeHitting?.avg ?? 0),
-      kPct: homeHitting?.kPct ?? 0,
-      runsPerGame: homeHitting?.runsPerGame ?? 0,
-      pitchingEra: homePitchingEra ?? 0,
-      bullpenEra: homeBullpenEra,
-      homeWinPct: homeStandings ? winPct(homeStandings.homeWins, homeStandings.homeLosses) : null,
-      awayWinPct: homeStandings ? winPct(homeStandings.awayWins, homeStandings.awayLosses) : null,
-      last10Wins: homeStandings?.last10Wins ?? 0,
-      last10Losses: homeStandings?.last10Losses ?? 0,
-      isHome: true,
-    },
-    awayPitcher: awayPitcherStats
-      ? { id: awayPitcherStats.id, name: awayPitcherStats.name, team: matchup.away.abbr, era: awayPitcherStats.era, fip: awayPitcherStats.fip, k9: awayPitcherStats.k9 }
-      : null,
-    homePitcher: homePitcherStats
-      ? { id: homePitcherStats.id, name: homePitcherStats.name, team: matchup.home.abbr, era: homePitcherStats.era, fip: homePitcherStats.fip, k9: homePitcherStats.k9 }
-      : null,
-  }
-
-  const edges = generateEdges(edgeCtx)
+  const edges = await getAnalysisEdges('mlb', String(matchup.gamePk), matchup.away.abbr, matchup.home.abbr)
   const contextStats = buildContextStats(
     { abbr: matchup.away.abbr, standings: awayStandings },
     { abbr: matchup.home.abbr, standings: homeStandings }

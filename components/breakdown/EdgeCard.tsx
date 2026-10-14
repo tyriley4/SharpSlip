@@ -86,10 +86,12 @@ export function EdgeCard({ edge, teamColors, sportsbook, sport }: { edge: Edge; 
                 sport: sport ?? 'mlb',
                 label: edge.bet,
                 typeLabel: edge.typeLabel,
-                oddsAmerican: -110,
-                prob: edgeToProb(edge.conf),
+                oddsAmerican: edge.market?.oddsAmerican ?? -110,
+                prob: edge.market?.prob ?? edgeToProb(edge.conf),
                 grade: edge.grade,
-                lineId: `insight:${sport ?? 'mlb'}:${edge.team ?? ''}:${edge.bet}`,
+                book: edge.market?.book,
+                matchup: edge.market?.matchup,
+                lineId: edge.market?.lineId ?? `insight:${sport ?? 'mlb'}:${edge.team ?? ''}:${edge.bet}`,
               })
               setAdded(true)
               setTimeout(() => setAdded(false), 1500)

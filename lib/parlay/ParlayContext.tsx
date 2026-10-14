@@ -25,7 +25,7 @@ export type NewParlayLeg = Omit<ParlayLeg, 'id' | 'prob'> & { prob?: number }
 
 interface ParlayContextValue {
   legs: ParlayLeg[]
-  addLeg: (leg: NewParlayLeg, options?: { silent?: boolean }) => void
+  addLeg: (leg: NewParlayLeg, options?: { silent?: boolean; message?: string }) => void
   addLegs: (legs: NewParlayLeg[]) => void
   removeLeg: (id: string) => void
   removeByLineId: (lineId: string) => void
@@ -110,17 +110,17 @@ export function ParlayProvider({ children }: { children: React.ReactNode }) {
   }
 
   function trackLeg(leg: NewParlayLeg) {
-    const m = /(d+(?:.d+)?)/.exec(leg.label)
+    const m = /(\d+(?:\.\d+)?)/.exec(leg.label)
     trackEvent('parlay_leg_added', { sport: leg.sport, betType: leg.typeLabel, threshold: m ? Number(m[1]) : null })
   }
 
-  function addLeg(leg: NewParlayLeg, options?: { silent?: boolean }) {
+  function addLeg(leg: NewParlayLeg, options?: { silent?: boolean; message?: string }) {
     trackLeg(leg)
     setLegs((prev) => {
       if (leg.lineId && prev.some((l) => l.lineId === leg.lineId)) return prev
       return [...prev, build(leg)]
     })
-    if (!options?.silent) showToast('Added to Parlay Builder')
+    if (!options?.silent) showToast(options?.message ?? 'Added to Parlay Builder')
   }
 
   function addLegs(newLegs: NewParlayLeg[]) {

@@ -15,7 +15,7 @@ import { LegBuilder } from './LegBuilder'
 import { LegDetails } from './LegDetails'
 import { FieldLabel, Pill, StepHeader, TextInput } from './ui'
 
-const SPORT_LABEL: Record<BetSport, string> = { mlb: 'MLB', nfl: 'NFL', nba: 'NBA', nhl: 'NHL' }
+const SPORT_LABEL: Record<BetSport, string> = { mlb: 'MLB', nfl: 'NFL', cfb: 'CFB', nba: 'NBA', cbb: 'CBB', nhl: 'NHL' }
 
 const TYPE_CARDS: { type: BetType; icon: string; blurb: string }[] = [
   { type: 'Moneyline', icon: '💰', blurb: 'Pick the winner' },

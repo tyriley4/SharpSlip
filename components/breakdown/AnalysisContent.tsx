@@ -45,7 +45,7 @@ export function AnalysisContent({
       <div className="md:grid md:grid-cols-2 md:items-start md:gap-4">
         {matchupOverview}
         {topEdge ? (
-          <TopEdgeCard edge={topEdge} teamColors={teamColors} sportsbook={settings.sportsbook} />
+          <TopEdgeCard edge={topEdge} teamColors={teamColors} sportsbook={topEdge.market?.book} />
         ) : (
           <div className="mb-2.5 rounded-2xl border border-border bg-card p-3.5 text-center text-xs text-muted">
             {hiddenCount > 0
@@ -84,7 +84,7 @@ export function AnalysisContent({
       ) : (
         <>
           {filtered.map((edge) => (
-            <EdgeCard key={edge.id} edge={edge} teamColors={teamColors} sportsbook={settings.sportsbook} sport={sport} />
+            <EdgeCard key={edge.id} edge={edge} teamColors={teamColors} sportsbook={edge.market?.book} sport={sport} />
           ))}
           <EdgeDisclaimer className="mt-2" />
         </>

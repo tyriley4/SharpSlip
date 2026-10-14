@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import { AnalysisContent } from '@/components/breakdown/AnalysisContent'
+import { ANALYSIS_CATEGORIES } from '@/lib/edges/analysisCategories'
 import { ContextStats } from '@/components/breakdown/ContextStats'
-import { LinesTab } from '@/components/breakdown/LinesTab'
+import { RecommendedBetsTab } from '@/components/breakdown/RecommendedBetsTab'
 import { RealCBBArenaTab, RealCBBDefenseTab, RealCBBScoringTab, RealCBBSummaryTab } from '@/components/breakdown/real-cbb/RealCBBTabs'
 import { RealNFLLiveTab } from '@/components/breakdown/real-nfl/RealNFLLiveTab'
 import { RealNFLTrendsTab } from '@/components/breakdown/real-nfl/RealNFLTrendsTab'
@@ -12,7 +13,7 @@ import type { CbbAnalysisData, CbbSide } from '@/lib/cbb/engine'
 
 const BASE_TABS: BreakdownTab[] = [
   { id: 'Analysis', icon: '🤖' },
-  { id: 'Lines', icon: '💲' },
+  { id: 'Recommended Bets', icon: '🎯' },
   { id: 'Trends', icon: '📊' },
   { id: 'Summary', icon: '📋' },
   { id: 'Scoring', icon: '🏀' },
@@ -21,7 +22,7 @@ const BASE_TABS: BreakdownTab[] = [
 ]
 const LIVE_TAB: BreakdownTab = { id: 'Live', icon: '🔴' }
 
-const EDGE_CATEGORIES = ['Spread-ML', 'Totals', 'Offense', 'Defense', 'Situational']
+const EDGE_CATEGORIES = ANALYSIS_CATEGORIES.cbb
 const API = '/api/cbb-breakdown'
 
 function when(iso: string | null): string {
@@ -143,7 +144,7 @@ export function RealCBBGameBreakdownClient({ backHref, data }: { backHref: strin
     >
       {tab === 'Live' && matchup.status === 'Live' && <RealNFLLiveTab awayAbbr={a} homeAbbr={h} url={`${API}/live?gameId=${encodeURIComponent(gid)}`} />}
       {tab === 'Analysis' && <AnalysisContent edges={edges} categories={EDGE_CATEGORIES} teamColors={teamColors} sport="cbb" matchupOverview={<Overview data={data} />} />}
-      {tab === 'Lines' && <LinesTab sport="cbb" gameId={gid} awayAbbr={a} homeAbbr={h} />}
+      {tab === 'Recommended Bets' && <RecommendedBetsTab sport="cbb" gameId={gid} awayAbbr={a} homeAbbr={h} />}
       {tab === 'Trends' && <RealNFLTrendsTab gameId={gid} apiBase={API} />}
       {tab === 'Summary' && <RealCBBSummaryTab gameId={gid} />}
       {tab === 'Scoring' && <RealCBBScoringTab gameId={gid} />}

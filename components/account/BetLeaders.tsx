@@ -10,7 +10,7 @@ import { playerTallies, profitText, recordText, teamTallies, type BetTally } fro
 import { useBets } from '@/lib/account/BetsContext'
 import type { BetSport } from '@/lib/account/types'
 
-const COLORS: Record<BetSport, Record<string, string>> = { mlb: MLB_TEAM_COLORS, nfl: NFL_TEAM_COLORS, nba: NBA_TEAM_COLORS, nhl: NHL_TEAM_COLORS }
+const COLORS: Record<BetSport, Record<string, string>> = { mlb: MLB_TEAM_COLORS, nfl: NFL_TEAM_COLORS, cfb: {}, nba: NBA_TEAM_COLORS, cbb: {}, nhl: NHL_TEAM_COLORS }
 
 function Row({ rank, title, sub, tally, badge, color }: { rank: number; title: string; sub: string; tally: BetTally; badge: string; color: string }) {
   const profitColor = tally.profit > 0 ? 'text-win' : tally.profit < 0 ? 'text-loss' : 'text-text2'

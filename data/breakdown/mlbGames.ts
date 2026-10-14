@@ -140,7 +140,7 @@ const mlbGameBreakdownsBase: Record<string, MLBGameBreakdownBase> = {
       { title: 'BOS bullpen taxed — 3 of last 4 nights', team: 'BOS', cat: 'Bullpen', hot: false, body: 'Martin & Winckowski pitched yesterday. Bullpen health 62/100. ERA 4.21 last 7 days.' },
       { title: 'Yankee Stadium HR factor: 121', team: 'NYY', cat: 'Ballpark', hot: true, body: 'Wind blowing IN tonight. LHH have 40% higher HR rate here. Favors Judge, Soto, Stanton.' },
       { title: 'NYY lineup out-OPS BOS by 73 points', team: 'NYY', cat: 'Lineup', hot: true, body: 'NYY 1-9 posting .841 team OPS this month vs BOS at .768. Judge and Soto both hitting above .295.' },
-      { title: 'Tight zone umpire — Hernandez', team: 'NYY', cat: 'Umpire', hot: false, body: 'K rate 2.2% below avg. CSW% context drops ~1.8 pts. Lean toward pitcher K unders.' },
+      { title: 'Tight zone umpire — Hernandez', team: 'NYY', cat: 'Umpire', hot: false, body: 'K rate 2.2% below avg. CSW% context drops ~1.8 pts. Historical data supports pitcher K unders.' },
       { title: 'NYY 12-4 ATS last 16 home vs BOS', team: 'NYY', cat: 'H2H', hot: true, body: 'NYY outscoring BOS 46-29 in last 10. Cole starts: NYY 8-2 in last 10 H2H.' },
       { title: 'BOS BABIP luck running out', team: 'BOS', cat: 'Betting', hot: false, body: 'BOS .342 BABIP last 14 days vs .301 career avg. Regression incoming. NYY ML value.' },
     ],

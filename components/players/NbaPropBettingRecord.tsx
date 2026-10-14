@@ -1,5 +1,6 @@
 'use client'
 
+import { PropConviction, usePlayerConviction, type ConvictionPlayer } from '@/components/players/PropConviction'
 import { CareerProvider, SeasonVsCareer } from '@/components/players/CareerCompare'
 import { useEffect, useState } from 'react'
 import { NBA_BETTING_CATEGORIES, NBA_BETTING_THRESHOLDS, type NBABettingCategory } from '@/lib/nba/leaderCategories'
@@ -21,13 +22,14 @@ function toneClasses(hitRate: number): { text: string; bar: string; border: stri
   return { text: 'text-text2', bar: 'bg-accent', border: 'border-border', bg: 'bg-card3' }
 }
 
-function PropCategoryCard({ playerId, category }: { playerId: number; category: NBABettingCategory }) {
+function PropCategoryCard({ playerId, category, player }: { playerId: number; category: NBABettingCategory; player?: ConvictionPlayer }) {
   const thresholds = NBA_BETTING_THRESHOLDS[category]
   const [threshold, setThreshold] = useState(thresholds[0])
   const [expanded, setExpanded] = useState(false)
   const [cache, setCache] = useState<Record<number, CategoryStatsResponse>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(false)
+  const conviction = usePlayerConviction(expanded && player ? { sport: 'nba', name: player.name, team: player.team, category, thresholds } : null)
 
   useEffect(() => {
     if (cache[threshold]) return
@@ -92,10 +94,17 @@ function PropCategoryCard({ playerId, category }: { playerId: number; category: 
                   }`}
                 >
                   {formatNBAThreshold(t)}
+                  {conviction.data?.best === t && ' ★'}
                 </button>
               )
             })}
           </div>
+
+          {player && (
+            <div className="mb-2.5">
+              <PropConviction conviction={conviction} selected={threshold} onSelect={setThreshold} format={formatNBAThreshold} />
+            </div>
+          )}
 
           {loading && !stats ? (
             <div className="flex items-center gap-2 py-3 text-[11px] text-muted">
@@ -138,14 +147,14 @@ function PropCategoryCard({ playerId, category }: { playerId: number; category: 
   )
 }
 
-export function NbaPropBettingRecord({ playerId }: { playerId: number }) {
+export function NbaPropBettingRecord({ playerId, player }: { playerId: number; player?: ConvictionPlayer }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-3.5 md:p-6">
       <div className="mb-3 text-[9px] font-extrabold tracking-[0.1em] text-muted md:mb-4 md:text-[10px]">PROP BETTING RECORD</div>
       <CareerProvider params={{ sport: 'nba', playerId: String(playerId) }}>
         <div className="flex flex-col gap-2">
           {NBA_BETTING_CATEGORIES.map((category) => (
-            <PropCategoryCard key={category} playerId={playerId} category={category} />
+            <PropCategoryCard key={category} playerId={playerId} category={category} player={player} />
           ))}
         </div>
       </CareerProvider>

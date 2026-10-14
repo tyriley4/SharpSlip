@@ -1,5 +1,6 @@
 import { getPlayerGameLog as getEspnGameLog } from '@/lib/espn/api'
 import { getPlayerGameLog as getMlbGameLog } from '@/lib/mlb/api'
+import { getMlbTeamsIndex } from '@/lib/mlb/teams'
 import { categoryStatKey, HITTER_PROP_CATEGORIES, PITCHER_PROP_CATEGORIES } from '@/lib/mlb/bettingCategories'
 import { getNBAPlayerGameLog } from '@/lib/nba/api'
 import { NBA_CURRENT_SEASON } from '@/lib/nba/divisions'
@@ -45,13 +46,13 @@ async function mlb(q: CareerQuery, count: number): Promise<CareerGame[]> {
   const cats = group === 'hitting' ? HITTER_PROP_CATEGORIES : PITCHER_PROP_CATEGORIES
   const year = new Date().getFullYear()
   const years = Array.from({ length: count }, (_, i) => year - i)
-  const logs = await Promise.all(years.map((y) => getMlbGameLog(Number(q.playerId), group, y).catch(() => null)))
+  const [logs, teams] = await Promise.all([Promise.all(years.map((y) => getMlbGameLog(Number(q.playerId), group, y).catch(() => null))), getMlbTeamsIndex().catch(() => null)])
   const out: CareerGame[] = []
   logs.forEach((log, i) => {
     for (const g of log ?? []) {
       const values: Record<string, number> = {}
       for (const c of cats) values[c] = Number(g.stat[categoryStatKey(c, group)] ?? 0)
-      out.push({ season: String(years[i]), date: ymd(g.date), values })
+      out.push({ season: String(years[i]), date: ymd(g.date), home: g.isHome, opp: teams?.get(g.opponent.id)?.abbr ?? g.opponent.abbreviation, values })
     }
   })
   return out
@@ -73,7 +74,7 @@ async function nba(q: CareerQuery, count: number): Promise<CareerGame[]> {
         const key = NBA_BETTING_STAT_KEY[c]
         values[c] = key === 'pra' ? g.pts + g.reb + g.ast : g[key]
       }
-      out.push({ season: seasons[i], date: ymd(g.gameDate), values })
+      out.push({ season: seasons[i], date: ymd(g.gameDate), home: g.isHome, opp: g.opponentAbbr, values })
     }
   })
   return out
@@ -88,7 +89,7 @@ async function nhl(q: CareerQuery, count: number): Promise<CareerGame[]> {
     for (const g of log ?? []) {
       const values: Record<string, number> = {}
       for (const [cat, key] of Object.entries(map)) values[cat] = Number((g as unknown as Record<string, number>)[key] ?? 0)
-      out.push({ season: String(seasons[i]), date: ymd(g.gameDate), values })
+      out.push({ season: String(seasons[i]), date: ymd(g.gameDate), home: g.isHome, opp: g.opponentAbbr, values })
     }
   })
   return out
@@ -105,6 +106,8 @@ async function nfl(q: CareerQuery, count: number): Promise<CareerGame[]> {
       out.push({
         season: String(years[i]),
         date: ymd(g.date),
+        home: g.home,
+        opp: g.opponent,
         values: {
           'Pass Yards': s.passingYards ?? 0,
           'TD Passes': s.passingTouchdowns ?? 0,

@@ -1,4 +1,3 @@
-import { generateNBAEdges } from './edgeEngine'
 import type { NBAGame, NBAStandingsTeam, NBATeamStats } from './api'
 
 export interface LiveNbaGame {
@@ -8,10 +7,9 @@ export interface LiveNbaGame {
   status: 'Pregame' | 'Live' | 'Final'
   statusText: string
   network: string | null
-  hasEdge: boolean
 }
 
-/** Maps today's games + standings + team stats into game-list cards, including a lightweight edge check per game. */
+/** Maps today's games + standings + team stats into game-list cards. */
 export function mapNbaGamesForList(
   games: NBAGame[],
   standings: NBAStandingsTeam[] | null,
@@ -34,54 +32,6 @@ export function mapNbaGamesForList(
     const awaySt = standingsByTeam.get(g.away.teamId)
     const homeSt = standingsByTeam.get(g.home.teamId)
 
-    let hasEdge = false
-    if (awayStats && homeStats) {
-      const winPct = (rec: string | undefined) => {
-        if (!rec) return null
-        const [w, l] = rec.split('-').map(Number)
-        return w + l > 0 ? (w / (w + l)) * 100 : null
-      }
-      const last10 = (rec: string | undefined) => {
-        if (!rec) return { wins: 0, losses: 0 }
-        const [w, l] = rec.split('-').map(Number)
-        return { wins: w || 0, losses: l || 0 }
-      }
-      const awayL10 = last10(awaySt?.last10)
-      const homeL10 = last10(homeSt?.last10)
-
-      const edges = generateNBAEdges({
-        away: {
-          abbr: g.away.abbr,
-          pts: awayStats.pts,
-          oppPts: awayStats.oppPts,
-          fg3Pct: awayStats.fg3Pct,
-          tov: awayStats.tov,
-          oppTov: awayStats.oppTov,
-          homeWinPct: null,
-          awayWinPct: winPct(awaySt?.away),
-          last10Wins: awayL10.wins,
-          last10Losses: awayL10.losses,
-          daysRest: null,
-          backToBack: false,
-        },
-        home: {
-          abbr: g.home.abbr,
-          pts: homeStats.pts,
-          oppPts: homeStats.oppPts,
-          fg3Pct: homeStats.fg3Pct,
-          tov: homeStats.tov,
-          oppTov: homeStats.oppTov,
-          homeWinPct: winPct(homeSt?.home),
-          awayWinPct: null,
-          last10Wins: homeL10.wins,
-          last10Losses: homeL10.losses,
-          daysRest: null,
-          backToBack: false,
-        },
-      })
-      hasEdge = edges.length > 0
-    }
-
     return {
       id: g.gameId,
       away: { abbr: g.away.abbr, score: g.away.score, record: recordFor(g.away.teamId), ppg: ppgFor(g.away.teamId) },
@@ -89,7 +39,6 @@ export function mapNbaGamesForList(
       status: g.status,
       statusText: g.statusText,
       network: g.network,
-      hasEdge,
     }
   })
 }

@@ -24,6 +24,7 @@ export function BettingControls({
   minGames,
   onMinGames,
   relaxed,
+  teams = false,
 }: {
   sort: BettingSort
   onSort: (s: BettingSort) => void
@@ -31,13 +32,15 @@ export function BettingControls({
   minGames: SampleMin
   onMinGames: (n: SampleMin) => void
   relaxed: boolean
+  /** Team rows have no player history to grade. */
+  teams?: boolean
 }) {
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-border bg-card2 px-3 py-2.5">
       <div className="flex items-center gap-2.5">
         <span className="w-[62px] shrink-0 text-[9px] font-extrabold tracking-[0.1em] text-muted">SORT BY</span>
         <div className="flex flex-wrap gap-1.5">
-          {BETTING_SORTS.map((s) => (
+          {BETTING_SORTS.filter((s) => !(teams && s === 'Conviction Score')).map((s) => (
             <Chip key={s} active={sort === s} onClick={() => onSort(s)}>
               {s}
             </Chip>
@@ -57,6 +60,11 @@ export function BettingControls({
       {relaxed && (
         <p className="text-[10px] leading-snug text-muted">
           Early in the season — fewer than 3 players have {minGames}+ games, so every qualifying player is shown.
+        </p>
+      )}
+      {sort === 'Conviction Score' && !teams && (
+        <p className="text-[10px] leading-snug text-muted">
+          Conviction weighs each player&apos;s hit-rate history against tonight&apos;s opponent, recent form and situation. Only the top hit-rate players are graded, and players without a game tonight are listed after the graded ones.
         </p>
       )}
       {sort === 'Most Profitable' && (

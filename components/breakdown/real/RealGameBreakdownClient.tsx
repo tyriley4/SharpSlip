@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import { AnalysisContent } from '@/components/breakdown/AnalysisContent'
-import { LinesTab } from '@/components/breakdown/LinesTab'
+import { ANALYSIS_CATEGORIES } from '@/lib/edges/analysisCategories'
+import { RecommendedBetsTab } from '@/components/breakdown/RecommendedBetsTab'
 import { RealBallparkTab } from '@/components/breakdown/real/RealBallparkTab'
 import { RealBattingTab } from '@/components/breakdown/real/RealBattingTab'
 import { RealGameLogTab } from '@/components/breakdown/real/RealGameLogTab'
@@ -17,7 +18,7 @@ import type { RealGameBreakdown } from '@/lib/mlb/gameBreakdown'
 
 const BASE_TABS: BreakdownTab[] = [
   { id: 'Analysis', icon: '🤖' },
-  { id: 'Lines', icon: '💲' },
+  { id: 'Recommended Bets', icon: '🎯' },
   { id: 'Trends', icon: '📊' },
   { id: 'Summary', icon: '📋' },
   { id: 'Batting', icon: '🔥' },
@@ -28,7 +29,7 @@ const BASE_TABS: BreakdownTab[] = [
 
 const LIVE_TAB: BreakdownTab = { id: 'Live', icon: '🔴' }
 
-const EDGE_CATEGORIES = ['Pitching', 'Offense', 'Bullpen', 'Situational']
+const EDGE_CATEGORIES = ANALYSIS_CATEGORIES.mlb
 
 function formatGameTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
@@ -101,8 +102,8 @@ export function RealGameBreakdownClient({ backHref, breakdown }: { backHref: str
         />
       )}
 
-      {tab === 'Lines' && (
-        <LinesTab sport="mlb" gameId={String(matchup.gamePk)} awayAbbr={matchup.away.abbr} homeAbbr={matchup.home.abbr} />
+      {tab === 'Recommended Bets' && (
+        <RecommendedBetsTab sport="mlb" gameId={String(matchup.gamePk)} awayAbbr={matchup.away.abbr} homeAbbr={matchup.home.abbr} />
       )}
 
       {tab === 'Trends' && <RealTrendsTab gamePk={matchup.gamePk} />}

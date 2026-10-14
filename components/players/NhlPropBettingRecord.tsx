@@ -1,5 +1,6 @@
 'use client'
 
+import { PropConviction, usePlayerConviction, type ConvictionPlayer } from '@/components/players/PropConviction'
 import { CareerProvider, SeasonVsCareer } from '@/components/players/CareerCompare'
 import { useEffect, useState } from 'react'
 import { formatNHLThreshold } from '@/lib/nhl/bettingStats'
@@ -26,13 +27,14 @@ function toneClasses(hitRate: number): { text: string; bar: string; border: stri
   return { text: 'text-text2', bar: 'bg-accent', border: 'border-border', bg: 'bg-card3' }
 }
 
-function PropCategoryCard({ playerId, isGoalie, category }: { playerId: number; isGoalie: boolean; category: string }) {
+function PropCategoryCard({ playerId, isGoalie, category, player }: { playerId: number; isGoalie: boolean; category: string; player?: ConvictionPlayer }) {
   const thresholds = isGoalie ? NHL_GOALIE_PLAYER_PROP_THRESHOLDS[category as keyof typeof NHL_GOALIE_PLAYER_PROP_THRESHOLDS] : NHL_SKATER_BETTING_THRESHOLDS[category as keyof typeof NHL_SKATER_BETTING_THRESHOLDS]
   const [threshold, setThreshold] = useState(thresholds[0])
   const [expanded, setExpanded] = useState(false)
   const [cache, setCache] = useState<Record<number, CategoryStatsResponse>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(false)
+  const conviction = usePlayerConviction(expanded && player ? { sport: 'nhl', name: player.name, team: player.team, category, thresholds } : null)
 
   useEffect(() => {
     if (cache[threshold]) return
@@ -98,10 +100,17 @@ function PropCategoryCard({ playerId, isGoalie, category }: { playerId: number; 
                   }`}
                 >
                   {formatNHLThreshold(t)}
+                  {conviction.data?.best === t && ' ★'}
                 </button>
               )
             })}
           </div>
+
+          {player && (
+            <div className="mb-2.5">
+              <PropConviction conviction={conviction} selected={threshold} onSelect={setThreshold} format={formatNHLThreshold} />
+            </div>
+          )}
 
           {loading && !stats ? (
             <div className="flex items-center gap-2 py-3 text-[11px] text-muted">
@@ -144,7 +153,7 @@ function PropCategoryCard({ playerId, isGoalie, category }: { playerId: number; 
   )
 }
 
-export function NhlPropBettingRecord({ playerId, isGoalie }: { playerId: number; isGoalie: boolean }) {
+export function NhlPropBettingRecord({ playerId, isGoalie, player }: { playerId: number; isGoalie: boolean; player?: ConvictionPlayer }) {
   const categories: readonly string[] = isGoalie ? NHL_GOALIE_PLAYER_PROP_CATEGORIES : NHL_SKATER_BETTING_CATEGORIES
 
   return (
@@ -153,7 +162,7 @@ export function NhlPropBettingRecord({ playerId, isGoalie }: { playerId: number;
       <CareerProvider params={{ sport: 'nhl', playerId: String(playerId), goalie: isGoalie }}>
         <div className="flex flex-col gap-2">
           {categories.map((category) => (
-            <PropCategoryCard key={category} playerId={playerId} isGoalie={isGoalie} category={category} />
+            <PropCategoryCard key={category} playerId={playerId} isGoalie={isGoalie} category={category} player={player} />
           ))}
         </div>
       </CareerProvider>

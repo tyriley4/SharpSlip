@@ -1,6 +1,6 @@
 import { getCollegeDirectory } from '@/lib/college/directory'
 import { scoreboardFor, type EspnGame } from '@/lib/espn/api'
-import { cachedResult } from '@/lib/net/ttlCache'
+import { cachedResult, peekCache } from '@/lib/net/ttlCache'
 import type { Sport } from '@/lib/sport/SportContext'
 import { fetchOddsPapiBoard } from './oddsPapi'
 import { rememberOffers } from './propPrices'
@@ -255,6 +255,17 @@ export async function getPlayerPropsStatus(sport: Sport, gameId: string, teams?:
     reportError(err, 'odds')
     console.error('[odds] getPlayerProps failed', err)
     return { props: null, reason: 'error' }
+  }
+}
+
+/** Player props only if they are already cached - never spends a credit. For home-screen scans and anything not tied to a user opening the game. */
+export async function getCachedPlayerProps(sport: Sport, gameId: string, teams?: TeamsRef): Promise<GamePropsResult | null> {
+  try {
+    const board = await getOddsBoard(sport)
+    const game = board && board.source === 'the-odds-api' ? matchGame(board.games, gameId, teams) : null
+    return game?.eventId ? peekCache<GamePropsResult>(`odds:props:${sport}:${game.eventId}`, PROPS_TTL) : null
+  } catch {
+    return null
   }
 }
 

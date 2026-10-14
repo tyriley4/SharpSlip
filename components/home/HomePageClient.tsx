@@ -16,7 +16,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import type { Article } from '@/lib/articles/types'
 import type { CfbCard } from '@/lib/espn/live'
 import type { CbbHomeInfo } from '@/lib/home/cbbHome'
-import type { BestBetPick } from '@/lib/home/bestBetPicks'
+import type { TodayBet } from '@/lib/edges/todaysBets'
 import type { Injury } from '@/lib/home/injuries'
 import type { CondensedMover } from '@/lib/home/movers'
 import type { TopEdgeResult } from '@/lib/home/topEdges'
@@ -30,7 +30,7 @@ export function HomePageClient({
   topGames,
   weatherCards,
   injuries,
-  bestBetPicks,
+  todayBets,
   cfb,
   articles,
   movers,
@@ -41,7 +41,7 @@ export function HomePageClient({
   topGames: TopGame[]
   weatherCards: WeatherWatchCard[]
   injuries: Injury[]
-  bestBetPicks: BestBetPick[]
+  todayBets: TodayBet[]
   cfb: CfbCard[]
   articles: Article[]
   movers: { hot: CondensedMover[]; cold: CondensedMover[] }
@@ -56,7 +56,7 @@ export function HomePageClient({
       <div className="flex flex-col gap-6 px-3.5 pt-3 md:gap-8 md:px-0 md:pt-0">
         <CbbSeasonCard info={cbbInfo} sportFilter={sportFilter} />
 
-        <FeaturedEdgeStats allEdges={allEdges} injuries={injuries} bestBetPicks={bestBetPicks} sportFilter={sportFilter} />
+        <FeaturedEdgeStats allEdges={allEdges} injuries={injuries} todayBets={todayBets} sportFilter={sportFilter} />
 
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-5">
           <div className="lg:w-[65%]">

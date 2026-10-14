@@ -1,4 +1,4 @@
-export const BETTING_SORTS = ['Hit Rate', 'W-L Record', 'Most Profitable'] as const
+export const BETTING_SORTS = ['Hit Rate', 'W-L Record', 'Most Profitable', 'Conviction Score'] as const
 export type BettingSort = (typeof BETTING_SORTS)[number]
 
 /** 0 = no minimum. */
@@ -54,6 +54,7 @@ export function formatProfit(profit: number): string {
  * - Hit Rate: highest percentage first.
  * - W-L Record: most wins first (45-10 beats 15-3); hit rate breaks ties.
  * - Most Profitable: highest flat-bet profit first ($10 on every game at the prop's real price, else -110).
+ * - Conviction Score: ordered like Hit Rate here; the board then re-orders the top players by their conviction against tonight's matchup.
  */
 export function rankBetting<T extends RankableRow>(rows: T[], sort: BettingSort, requestedMin: SampleMin): RankResult<T> {
   let appliedMin = requestedMin

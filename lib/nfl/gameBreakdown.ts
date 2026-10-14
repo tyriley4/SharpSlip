@@ -9,7 +9,7 @@ import {
   getNFLWeeklyPlayerStats,
   getActiveNFLSeason,
 } from './api'
-import { generateNFLEdges, type EdgeQBInput, type EdgeTeamInput, type NFLEdgeContext } from './edgeEngine'
+import { getAnalysisEdges } from '@/lib/edges/analysisEdges'
 import { normalizeNflAbbr, NFL_TEAM_NAMES } from './divisions'
 
 function n(v: string | undefined): number {
@@ -592,43 +592,7 @@ export async function getNFLAnalysisData(gameId: string): Promise<NFLAnalysisDat
     homeQB ? getQBCpoe(homeQB.name, season) : Promise.resolve(null),
   ])
 
-  function toEdgeTeam(abbr: string, stats: NFLTeamStats | null, win: NFLWinSplits, secCompAllowed: number | null): EdgeTeamInput {
-    return {
-      abbr,
-      pointsPerGame: stats?.pointsPerGame ?? 0,
-      pointsAllowedPerGame: stats?.pointsAllowedPerGame ?? 0,
-      passYdsPerGame: stats?.passYdsPerGame ?? 0,
-      rushYdsPerGame: stats?.rushYdsPerGame ?? 0,
-      passYdsAllowedPerGame: stats?.passYdsAllowedPerGame ?? 0,
-      rushYdsAllowedPerGame: stats?.rushYdsAllowedPerGame ?? 0,
-      turnoversForcedPerGame: stats?.turnoversForcedPerGame ?? 0,
-      homeWinPct: win.homeWinPct,
-      awayWinPct: win.awayWinPct,
-      last5Wins: win.last5Wins,
-      last5Losses: win.last5Losses,
-      secondaryCompPctAllowed: secCompAllowed,
-    }
-  }
-
-  function toEdgeQB(qb: NFLQBStats | null, cpoe: number | null): EdgeQBInput | null {
-    if (!qb) return null
-    return {
-      name: qb.name,
-      team: qb.team,
-      rating: qb.season.rating,
-      intRate: qb.season.att > 0 ? Math.round((qb.season.int / qb.season.att) * 1000) / 10 : 0,
-      cpoe,
-    }
-  }
-
-  const edgeCtx: NFLEdgeContext = {
-    away: toEdgeTeam(matchup.away.abbr, awayTeamStats, awayWin, awaySecCompAllowed),
-    home: toEdgeTeam(matchup.home.abbr, homeTeamStats, homeWin, homeSecCompAllowed),
-    awayQB: toEdgeQB(awayQB, awayCpoe),
-    homeQB: toEdgeQB(homeQB, homeCpoe),
-  }
-
-  const edges = generateNFLEdges(edgeCtx)
+  const edges = await getAnalysisEdges('nfl', matchup.gameId, matchup.away.abbr, matchup.home.abbr)
 
   const contextStats = [
     awayTeamStats ? { label: `${matchup.away.abbr} Record`, val: `${awayTeamStats.wins}-${awayTeamStats.losses}`, good: awayTeamStats.wins >= awayTeamStats.losses } : null,

@@ -172,7 +172,7 @@ export function getNFLBetImpactCards(weather: NFLWeatherInfo, homeEdge: NFLHomeE
   if (!weather.indoor && weather.available && (weather.windMph ?? 0) > 15) {
     cards.push({
       title: 'High Wind — Passing Affected',
-      detail: `Wind at ${weather.windMph?.toFixed(0)} mph — lean run-heavy game script and the under.`,
+      detail: `Wind at ${weather.windMph?.toFixed(0)} mph — this trend favors a run-heavy game script and the under.`,
       affects: ['Under', 'Passing Props'],
     })
   }

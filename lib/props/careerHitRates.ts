@@ -4,6 +4,9 @@ export interface CareerGame {
   /** Season label as the source names it (2026, "2025-26", 20252026). */
   season: string
   date: string
+  /** Venue and opponent of the game, when the source gives them (used by the edge engine for splits and head-to-head). */
+  home?: boolean
+  opp?: string
   /** Per-game value of every prop category the player's sport offers, keyed by the category label. */
   values: Record<string, number>
 }

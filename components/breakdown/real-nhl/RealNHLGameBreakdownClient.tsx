@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import { AnalysisContent } from '@/components/breakdown/AnalysisContent'
-import { LinesTab } from '@/components/breakdown/LinesTab'
+import { ANALYSIS_CATEGORIES } from '@/lib/edges/analysisCategories'
+import { RecommendedBetsTab } from '@/components/breakdown/RecommendedBetsTab'
 import { RealNHLDefenseArenaTab } from '@/components/breakdown/real-nhl/RealNHLDefenseArenaTab'
 import { RealNHLGoalieTab } from '@/components/breakdown/real-nhl/RealNHLGoalieTab'
 import { RealNHLMatchupOverview } from '@/components/breakdown/real-nhl/RealNHLMatchupOverview'
@@ -16,7 +17,7 @@ import type { NHLAnalysisData } from '@/lib/nhl/gameBreakdown'
 
 const TABS: BreakdownTab[] = [
   { id: 'Analysis', icon: '🤖' },
-  { id: 'Lines', icon: '💲' },
+  { id: 'Recommended Bets', icon: '🎯' },
   { id: 'Trends', icon: '📊' },
   { id: 'Summary', icon: '📋' },
   { id: 'Scoring', icon: '🏒' },
@@ -25,7 +26,7 @@ const TABS: BreakdownTab[] = [
   { id: 'Defense', icon: '🛡' },
 ]
 
-const EDGE_CATEGORIES = ['Puck Line', 'Totals', 'Player Props', 'Goalie', 'Offense', 'Special Teams', 'Situational']
+const EDGE_CATEGORIES = ANALYSIS_CATEGORIES.nhl
 
 function formatPuckDrop(iso: string): string {
   return new Date(iso).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })
@@ -79,8 +80,8 @@ export function RealNHLGameBreakdownClient({ backHref, data }: { backHref: strin
         />
       )}
 
-      {tab === 'Lines' && (
-        <LinesTab sport="nhl" gameId={matchup.gameId} awayAbbr={matchup.away.abbr} homeAbbr={matchup.home.abbr} />
+      {tab === 'Recommended Bets' && (
+        <RecommendedBetsTab sport="nhl" gameId={matchup.gameId} awayAbbr={matchup.away.abbr} homeAbbr={matchup.home.abbr} />
       )}
 
       {tab === 'Trends' && <RealNHLTrendsTab gameId={matchup.gameId} />}

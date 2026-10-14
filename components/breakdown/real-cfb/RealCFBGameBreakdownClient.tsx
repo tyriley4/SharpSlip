@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { AnalysisContent } from '@/components/breakdown/AnalysisContent'
-import { LinesTab } from '@/components/breakdown/LinesTab'
+import { ANALYSIS_CATEGORIES } from '@/lib/edges/analysisCategories'
+import { RecommendedBetsTab } from '@/components/breakdown/RecommendedBetsTab'
 import { RealCFBStadiumTab } from '@/components/breakdown/real-cfb/RealCFBStadiumTab'
 import { RealNFLDefenseTab } from '@/components/breakdown/real-nfl/RealNFLDefenseTab'
 import { RealNFLLiveTab } from '@/components/breakdown/real-nfl/RealNFLLiveTab'
@@ -17,7 +18,7 @@ import type { CfbAnalysisData, CfbSide } from '@/lib/cfb/engine'
 
 const BASE_TABS: BreakdownTab[] = [
   { id: 'Analysis', icon: '🤖' },
-  { id: 'Lines', icon: '💲' },
+  { id: 'Recommended Bets', icon: '🎯' },
   { id: 'Trends', icon: '📊' },
   { id: 'Summary', icon: '📋' },
   { id: 'Passing', icon: '🏈' },
@@ -28,7 +29,7 @@ const BASE_TABS: BreakdownTab[] = [
 ]
 const LIVE_TAB: BreakdownTab = { id: 'Live', icon: '🔴' }
 
-const EDGE_CATEGORIES = ['Spread-ML', 'Totals', 'Props', 'Offense', 'Defense', 'Situational']
+const EDGE_CATEGORIES = ANALYSIS_CATEGORIES.cfb
 const API = '/api/cfb-breakdown'
 
 function kickoff(iso: string | null): string {
@@ -123,7 +124,7 @@ export function RealCFBGameBreakdownClient({ backHref, data }: { backHref: strin
         <AnalysisContent edges={edges} categories={EDGE_CATEGORIES} teamColors={teamColors} sport="cfb" matchupOverview={<CfbOverview data={data} />} />
       )}
 
-      {tab === 'Lines' && <LinesTab sport="cfb" gameId={gid} awayAbbr={a} homeAbbr={h} />}
+      {tab === 'Recommended Bets' && <RecommendedBetsTab sport="cfb" gameId={gid} awayAbbr={a} homeAbbr={h} />}
       {tab === 'Trends' && <RealNFLTrendsTab gameId={gid} apiBase={API} />}
       {tab === 'Summary' && <RealNFLSummaryTab gameId={gid} apiBase={API} teamColors={teamColors} />}
       {tab === 'Passing' && <RealNFLPassingTab gameId={gid} awayAbbr={a} homeAbbr={h} apiBase={API} teamColors={teamColors} college />}

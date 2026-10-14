@@ -10,7 +10,7 @@ type ResultFilter = 'All' | 'Pending' | 'Won' | 'Lost' | 'Pushed'
 type DateFilter = 'This Week' | 'This Month' | 'All Time'
 
 const RESULT_FILTERS: Record<ResultFilter, BetResult | null> = { All: null, Pending: 'pending', Won: 'win', Lost: 'loss', Pushed: 'push' }
-const SPORT_LABEL: Record<BetSport, string> = { mlb: 'MLB', nfl: 'NFL', nba: 'NBA', nhl: 'NHL' }
+const SPORT_LABEL: Record<BetSport, string> = { mlb: 'MLB', nfl: 'NFL', cfb: 'CFB', nba: 'NBA', cbb: 'CBB', nhl: 'NHL' }
 
 const BORDER: Record<BetResult, string> = { win: 'bg-win', loss: 'bg-loss', push: 'bg-[#FFB800]', pending: 'bg-accent animate-pulse' }
 const LEG_BADGE: Record<BetResult, { text: string; cls: string }> = {

@@ -1,14 +1,17 @@
 'use client'
 
+import { PropConviction, usePlayerConviction, type ConvictionPlayer } from '@/components/players/PropConviction'
 import { useMemo, useState } from 'react'
 import { CareerProvider, rateTone, SeasonVsCareer, seasonFromGames, useCareer } from '@/components/players/CareerCompare'
 import { formatNflBettingThreshold, NFL_BETTING_CATEGORIES, NFL_BETTING_THRESHOLDS, type NflBettingSub } from '@/lib/nfl/bettingCategories'
 
-function PropCategoryCard({ category }: { category: string }) {
+function PropCategoryCard({ category, player }: { category: string; player?: ConvictionPlayer }) {
   const thresholds = NFL_BETTING_THRESHOLDS[category]
   const [threshold, setThreshold] = useState(thresholds[0])
   const [expanded, setExpanded] = useState(false)
   const { season } = useCareer()
+  const conviction = usePlayerConviction(expanded && player ? { sport: 'nfl', name: player.name, team: player.team, category, thresholds } : null)
+  const fmt = (t: number) => formatNflBettingThreshold(category, t)
 
   const games = season?.state === 'ready' ? season.games : null
   const stats = useMemo(() => (games ? seasonFromGames(games, category, threshold) : null), [games, category, threshold])
@@ -43,10 +46,17 @@ function PropCategoryCard({ category }: { category: string }) {
                   t === threshold ? 'border-accent bg-accent text-white' : 'border-border bg-transparent text-muted'
                 }`}
               >
-                {formatNflBettingThreshold(category, t)}
+                {fmt(t)}
+                {conviction.data?.best === t && ' ★'}
               </button>
             ))}
           </div>
+
+          {player && (
+            <div className="mb-2.5">
+              <PropConviction conviction={conviction} selected={threshold} onSelect={setThreshold} format={fmt} />
+            </div>
+          )}
 
           {season?.state === 'loading' ? (
             <div className="flex items-center gap-2 py-3 text-[11px] text-muted">
@@ -75,14 +85,14 @@ function PropCategoryCard({ category }: { category: string }) {
 }
 
 /** NFL prop hit rates, this season against the last five seasons, from ESPN game logs. */
-export function NflPropBettingRecord({ playerId, sub }: { playerId: string; sub: NflBettingSub }) {
+export function NflPropBettingRecord({ playerId, sub, player }: { playerId: string; sub: NflBettingSub; player?: ConvictionPlayer }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-3.5 md:p-6">
       <div className="mb-3 text-[9px] font-extrabold tracking-[0.1em] text-muted md:mb-4 md:text-[10px]">PROP BETTING RECORD</div>
       <CareerProvider params={{ sport: 'nfl', playerId }} withSeason>
         <div className="flex flex-col gap-2">
           {NFL_BETTING_CATEGORIES[sub].map((category) => (
-            <PropCategoryCard key={category} category={category} />
+            <PropCategoryCard key={category} category={category} player={player} />
           ))}
         </div>
       </CareerProvider>

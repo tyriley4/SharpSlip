@@ -2,6 +2,7 @@
 
 import { CareerProvider, useCareer, type CareerParams } from '@/components/players/CareerCompare'
 import { calculateCareerHitRate, compareRates } from '@/lib/props/careerHitRates'
+import { ConvictionSummary } from '@/components/players/PropConviction'
 import type { TonightEdge } from '@/lib/players/types'
 
 /** "74% this season • 68% career" with the trend, once the career log has loaded; renders nothing until then. */
@@ -82,11 +83,19 @@ export function TonightEdgeCard({ edge, career }: { edge: TonightEdge; career?: 
       )}
 
       <div className="flex flex-col gap-2 md:gap-2.5">
-        {edge.lean && (
-          <div className="rounded-xl border border-positive/25 bg-positive/[0.08] p-2.5 md:p-3">
-            <div className="mb-0.5 text-[9px] font-extrabold tracking-[0.08em] text-positive">LEAN</div>
-            <p className="text-[11px] leading-relaxed text-text2 md:text-[13px]">{edge.lean}</p>
+        {edge.conviction && 'row' in edge.conviction ? (
+          <div className="rounded-xl border border-accent/25 bg-accent/[0.06] p-2.5 md:p-3">
+            <div className="mb-1.5 text-[9px] font-extrabold tracking-[0.08em] text-accent">CONVICTION VS. TONIGHT&apos;S MATCHUP</div>
+            <ConvictionSummary row={edge.conviction.row} matchup={edge.conviction.matchup} />
           </div>
+        ) : (
+          edge.lean && (
+            <div className="rounded-xl border border-positive/25 bg-positive/[0.08] p-2.5 md:p-3">
+              <div className="mb-0.5 text-[9px] font-extrabold tracking-[0.08em] text-positive">HISTORICAL READ</div>
+              <p className="text-[11px] leading-relaxed text-text2 md:text-[13px]">{edge.lean}</p>
+              {edge.conviction && 'unavailable' in edge.conviction && edge.conviction.unavailable === 'No game today' && <p className="mt-1 text-[10px] text-muted">No game tonight — conviction grades appear on game days.</p>}
+            </div>
+          )
         )}
         {edge.risk && (
           <div className="rounded-xl border border-negative/25 bg-negative/[0.08] p-2.5 md:p-3">

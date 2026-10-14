@@ -148,7 +148,7 @@ async function pitcherTrends(abbr: string, pitcherId: number, pitcherName: strin
       category: 'Pitching',
       title: `${pitcherName} — Elite Strikeout Pitcher`,
       stat: `${seasonK9.toFixed(1)} K/9 this season`,
-      note: 'Strong lean toward the strikeout prop and under on contact-heavy stat lines.',
+      note: 'Historical data supports strikeout props and the under on contact-heavy stat lines.',
       hot: seasonK9 > 11.5,
     })
   }

@@ -100,7 +100,7 @@ export function AddLegsPanel({ games }: { games: ParlayGame[] }) {
     <section className="flex flex-col gap-3">
       <div>
         <h3 className="section-header text-sm text-text md:text-base">Add Legs</h3>
-        <p className="mt-0.5 text-[11px] text-muted">Search a team, or browse today&apos;s games. Prices are real sportsbook lines; player props are on each game&apos;s Lines tab.</p>
+        <p className="mt-0.5 text-[11px] text-muted">Search a team, or browse today&apos;s games. Prices are real sportsbook lines; player props are on each game&apos;s Recommended Bets tab.</p>
       </div>
 
       <div className="relative">

@@ -64,7 +64,7 @@ export function fmtLine(n: number): string {
 
 const SPREAD_TITLE: Record<Sport, string> = { mlb: 'Run Line', nhl: 'Puck Line', nba: 'Spread', nfl: 'Spread', cfb: 'Spread', cbb: 'Spread' }
 
-function mk(sport: Sport, gameId: string, matchup: string, market: string, key: string, label: string, display: string, odds: number, prob: number, book: string): BetLine {
+export function mk(sport: Sport, gameId: string, matchup: string, market: string, key: string, label: string, display: string, odds: number, prob: number, book: string): BetLine {
   return {
     id: `${sport}:${gameId}:${market}:${key}`,
     sport,

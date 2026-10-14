@@ -154,9 +154,9 @@ export async function getBestNhlProp(playerId: number): Promise<BestNhlPropResul
 
 function leanForHitRate(hitRate: number): string {
   if (hitRate >= 70) return `Hits this mark at a ${hitRate}% clip this season — one of the strongest props on the board.`
-  if (hitRate >= 60) return `Clears this line ${hitRate}% of the time this season — a solid lean.`
-  if (hitRate >= 45) return `Right around a coin flip at ${hitRate}% this season — proceed with caution.`
-  return `Only hits this mark ${hitRate}% of the time this season — fades more often than not.`
+  if (hitRate >= 60) return `Clears this line ${hitRate}% of the time this season — a solid statistical case.`
+  if (hitRate >= 45) return `Right around a coin flip at ${hitRate}% this season — no clear statistical case either way.`
+  return `Only hits this mark ${hitRate}% of the time this season — falls short more often than not.`
 }
 
 /** Converts a computed best-prop scan into the player page's Tonight's Edge card shape. */

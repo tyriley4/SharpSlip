@@ -28,6 +28,12 @@ export interface CachedResult<T> {
 /** A fixed lifetime in seconds, or a function of the cached value (e.g. shorter while a game is live). */
 export type Ttl<T> = number | ((value: T) => number)
 
+/** The cached value for a key if one exists and is younger than maxAgeSeconds. Never loads anything. */
+export function peekCache<T>(key: string, maxAgeSeconds: number): T | null {
+  const hit = store.entries.get(key)
+  return hit && Date.now() - hit.at < maxAgeSeconds * 1000 ? (hit.value as T) : null
+}
+
 export async function cachedResult<T>(
   key: string,
   ttlSeconds: Ttl<T>,

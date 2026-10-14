@@ -14,8 +14,7 @@ import {
   type NHLTeamStats,
 } from './api'
 import { NHL_TEAM_NAMES, nhlAbbrFromTeamId } from './divisions'
-import { generateNHLEdges, type EdgeNhlTeamInput, type NHLEdgeContext } from './edgeEngine'
-
+import { getAnalysisEdges } from '@/lib/edges/analysisEdges'
 // ---------------------------------------------------------------------------
 // Matchup
 // ---------------------------------------------------------------------------
@@ -188,31 +187,6 @@ function last10FromRecord(rec: string | undefined): { wins: number; losses: numb
   return { wins: w || 0, losses: l || 0 }
 }
 
-function toEdgeTeam(
-  abbr: string,
-  stats: NHLTeamStats | null,
-  standing: NHLStandingsTeam | null,
-  rest: { daysRest: number | null; backToBack: boolean },
-  goalie: NHLStarterGoalie | null
-): EdgeNhlTeamInput {
-  const last10 = last10FromRecord(standing?.last10)
-  return {
-    abbr,
-    goalsForPerGame: stats?.goalsForPerGame ?? 0,
-    shootingPct: stats && stats.shotsForPerGame > 0 ? stats.goalsForPerGame / stats.shotsForPerGame : 0,
-    ppPct: stats?.powerPlayPct ?? 0,
-    pkPct: stats?.penaltyKillPct ?? 0,
-    homeWinPct: winPctFromParts(standing?.homeRecord),
-    awayWinPct: winPctFromParts(standing?.awayRecord),
-    last10Wins: last10.wins,
-    last10Losses: last10.losses,
-    daysRest: rest.daysRest,
-    backToBack: rest.backToBack,
-    goalieSavePct: goalie?.savePct ?? null,
-    goalieGaa: goalie?.gaa ?? null,
-  }
-}
-
 export async function getNHLAnalysisData(gameId: string): Promise<NHLAnalysisData | null> {
   const matchup = await getNHLGameMatchup(gameId)
   if (!matchup) return null
@@ -236,11 +210,7 @@ export async function getNHLAnalysisData(gameId: string): Promise<NHLAnalysisDat
   const awayStanding = findStanding(standings, matchup.away.abbr)
   const homeStanding = findStanding(standings, matchup.home.abbr)
 
-  const edgeCtx: NHLEdgeContext = {
-    away: toEdgeTeam(matchup.away.abbr, awayStats, awayStanding, awayRest, awayGoalie),
-    home: toEdgeTeam(matchup.home.abbr, homeStats, homeStanding, homeRest, homeGoalie),
-  }
-  const edges = generateNHLEdges(edgeCtx)
+  const edges = await getAnalysisEdges('nhl', matchup.gameId, matchup.away.abbr, matchup.home.abbr)
 
   const contextStats = [
     awayStanding ? { label: `${matchup.away.abbr} Record`, val: `${awayStanding.wins}-${awayStanding.losses}-${awayStanding.otLosses}`, good: awayStanding.points >= 0 } : null,

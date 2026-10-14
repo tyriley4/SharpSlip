@@ -1,3 +1,4 @@
+import type { ThresholdConviction } from '@/lib/edges/playerEdge'
 export type PlayerSport = 'mlb' | 'nfl' | 'cfb' | 'nba' | 'cbb' | 'nhl'
 
 export type StatLine = Record<string, string | number>
@@ -34,6 +35,8 @@ export interface TonightEdge {
   last10?: boolean[]
   /** The prop this edge is about, so the card can look up its career hit rate. */
   prop?: { category: string; threshold: number }
+  /** Conviction for that prop against tonight's game (server-filled), or why there is none. */
+  conviction?: { matchup?: string; href?: string; row: ThresholdConviction } | { unavailable: string }
 }
 
 export interface CareerVsOpponentSeason {

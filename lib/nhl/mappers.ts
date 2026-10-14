@@ -1,4 +1,3 @@
-import { generateNHLEdges } from './edgeEngine'
 import type { NHLGame, NHLGoalieSeasonStats, NHLStandingsTeam, NHLTeamStats } from './api'
 
 export interface LiveNhlGame {
@@ -10,7 +9,6 @@ export interface LiveNhlGame {
   statusText: string
   network: string | null
   venue: string
-  hasEdge: boolean
 }
 
 /** Picks each team's likely starter — the goalie with the most games started this season, a
@@ -27,7 +25,7 @@ function winPct(w: number, l: number, otl: number): number | null {
   return gp > 0 ? (w / gp) * 100 : null
 }
 
-/** Maps today's games + standings + team stats into game-list cards, including a lightweight edge check per game. */
+/** Maps today's games + standings + team stats into game-list cards. */
 export function mapNhlGamesForList(
   games: NHLGame[],
   standings: NHLStandingsTeam[] | null,
@@ -51,53 +49,6 @@ export function mapNhlGamesForList(
     const awaySt = standingsByAbbr.get(g.away.abbr)
     const homeSt = standingsByAbbr.get(g.home.abbr)
 
-    let hasEdge = false
-    if (awayStats && homeStats) {
-      const last10 = (rec: string | undefined) => {
-        if (!rec) return { wins: 0, losses: 0 }
-        const [w, l] = rec.split('-').map(Number)
-        return { wins: w || 0, losses: l || 0 }
-      }
-      const awayL10 = last10(awaySt?.last10)
-      const homeL10 = last10(homeSt?.last10)
-      const awayHomeAwayParts = (awaySt?.awayRecord ?? '0-0-0').split('-').map(Number)
-      const homeHomeAwayParts = (homeSt?.homeRecord ?? '0-0-0').split('-').map(Number)
-
-      const edges = generateNHLEdges({
-        away: {
-          abbr: g.away.abbr,
-          goalsForPerGame: awayStats.goalsForPerGame,
-          shootingPct: awayStats.shotsForPerGame > 0 ? awayStats.goalsForPerGame / awayStats.shotsForPerGame : 0,
-          ppPct: awayStats.powerPlayPct,
-          pkPct: awayStats.penaltyKillPct,
-          homeWinPct: null,
-          awayWinPct: winPct(awayHomeAwayParts[0] ?? 0, awayHomeAwayParts[1] ?? 0, awayHomeAwayParts[2] ?? 0),
-          last10Wins: awayL10.wins,
-          last10Losses: awayL10.losses,
-          daysRest: null,
-          backToBack: false,
-          goalieSavePct: null,
-          goalieGaa: null,
-        },
-        home: {
-          abbr: g.home.abbr,
-          goalsForPerGame: homeStats.goalsForPerGame,
-          shootingPct: homeStats.shotsForPerGame > 0 ? homeStats.goalsForPerGame / homeStats.shotsForPerGame : 0,
-          ppPct: homeStats.powerPlayPct,
-          pkPct: homeStats.penaltyKillPct,
-          homeWinPct: winPct(homeHomeAwayParts[0] ?? 0, homeHomeAwayParts[1] ?? 0, homeHomeAwayParts[2] ?? 0),
-          awayWinPct: null,
-          last10Wins: homeL10.wins,
-          last10Losses: homeL10.losses,
-          daysRest: null,
-          backToBack: false,
-          goalieSavePct: null,
-          goalieGaa: null,
-        },
-      })
-      hasEdge = edges.length > 0
-    }
-
     return {
       id: g.gameId,
       startTimeUTC: g.startTimeUTC,
@@ -119,7 +70,6 @@ export function mapNhlGamesForList(
       statusText: g.statusText,
       network: g.network,
       venue: g.venue,
-      hasEdge,
     }
   })
 }

@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import { AnalysisContent } from '@/components/breakdown/AnalysisContent'
-import { LinesTab } from '@/components/breakdown/LinesTab'
+import { ANALYSIS_CATEGORIES } from '@/lib/edges/analysisCategories'
+import { RecommendedBetsTab } from '@/components/breakdown/RecommendedBetsTab'
 import { RealNBAAssistsTab } from '@/components/breakdown/real-nba/RealNBAAssistsTab'
 import { RealNBADefenseStadiumTab } from '@/components/breakdown/real-nba/RealNBADefenseStadiumTab'
 import { RealNBAMatchupOverview } from '@/components/breakdown/real-nba/RealNBAMatchupOverview'
@@ -16,7 +17,7 @@ import type { NBAAnalysisData } from '@/lib/nba/gameBreakdown'
 
 const TABS: BreakdownTab[] = [
   { id: 'Analysis', icon: '🤖' },
-  { id: 'Lines', icon: '💲' },
+  { id: 'Recommended Bets', icon: '🎯' },
   { id: 'Trends', icon: '📊' },
   { id: 'Summary', icon: '📋' },
   { id: 'Scoring', icon: '🏀' },
@@ -25,7 +26,7 @@ const TABS: BreakdownTab[] = [
   { id: 'Defense', icon: '🛡' },
 ]
 
-const EDGE_CATEGORIES = ['Spread-ML', 'Totals', 'Player Props', 'Offense', 'Defense', 'Situational']
+const EDGE_CATEGORIES = ANALYSIS_CATEGORIES.nba
 
 function formatTipoff(iso: string): string {
   return new Date(iso).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })
@@ -72,8 +73,8 @@ export function RealNBAGameBreakdownClient({ backHref, data }: { backHref: strin
         />
       )}
 
-      {tab === 'Lines' && (
-        <LinesTab sport="nba" gameId={matchup.gameId} awayAbbr={matchup.away.abbr} homeAbbr={matchup.home.abbr} />
+      {tab === 'Recommended Bets' && (
+        <RecommendedBetsTab sport="nba" gameId={matchup.gameId} awayAbbr={matchup.away.abbr} homeAbbr={matchup.home.abbr} />
       )}
 
       {tab === 'Trends' && <RealNBATrendsTab gameId={matchup.gameId} />}

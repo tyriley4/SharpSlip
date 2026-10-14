@@ -5,7 +5,7 @@ import { getNHLAnalysisData } from '@/lib/nhl/gameBreakdown'
 import { getCbbAnalysis } from '@/lib/cbb/engine'
 import { getCfbAnalysis } from '@/lib/cfb/engine'
 import { dateOffset, getUnifiedGamesForDate, type UnifiedGame } from './schedule'
-import { withTimeout } from '@/lib/utils/concurrency'
+import { mapWithConcurrency, withTimeout } from '@/lib/utils/concurrency'
 import type { Edge } from '@/data/breakdown/types'
 import type { Sport } from '@/lib/sport/SportContext'
 
@@ -20,16 +20,16 @@ type Fetched = { edges: Edge[] }
 const MAX_GAMES_PER_SPORT = 6
 
 async function collect(games: UnifiedGame[], fetcher: (id: string) => Promise<Fetched | null>, label: string): Promise<GameEdges[]> {
-  const out: GameEdges[] = []
-  for (const g of games.slice(0, MAX_GAMES_PER_SPORT)) {
+  const rows = await mapWithConcurrency(games.slice(0, MAX_GAMES_PER_SPORT), 3, async (g): Promise<GameEdges | null> => {
     try {
       const data = await fetcher(g.id)
-      if (data) out.push({ game: g, edges: data.edges })
+      return data ? { game: g, edges: data.edges } : null
     } catch (err) {
       console.error(`[home/gameBreakdowns] ${label} game ${g.id} failed:`, err)
+      return null
     }
-  }
-  return out
+  })
+  return rows.filter((r): r is GameEdges => r !== null)
 }
 
 /**
