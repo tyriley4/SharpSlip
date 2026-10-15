@@ -75,6 +75,7 @@ export function RealNFLGameBreakdownClient({ backHref, data }: { backHref: strin
       tabs={tabs}
       activeTab={tab}
       onChangeTab={setTab}
+      season={data.season}
     >
       {data.statsSeason !== matchup.season && (
         <NflSeasonNote season={data.statsSeason ?? matchup.season - 1} updating className="mx-3.5 mt-3 md:mx-8" />

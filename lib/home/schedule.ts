@@ -3,6 +3,7 @@ import { getActiveNFLSeason, getNFLSchedule } from '@/lib/nfl/api'
 import { getNetworkMap } from '@/lib/espn/api'
 import { normalizeNflAbbr } from '@/lib/nfl/divisions'
 import { getNBAGamesForDate } from '@/lib/nba/api'
+import { isNbaPreseasonDate } from '@/lib/edges/seasonText'
 import { getNHLScheduleForDate } from '@/lib/nhl/api'
 import { getCollegeSlate } from '@/lib/college/slate'
 import type { Sport } from '@/lib/sport/SportContext'
@@ -79,7 +80,8 @@ async function nflGamesForDate(date: string): Promise<UnifiedGame[]> {
 async function nbaGamesForDate(date: string): Promise<UnifiedGame[]> {
   const games = await getNBAGamesForDate(date)
   if (!games) return []
-  return games.map((g): UnifiedGame => ({
+  // Preseason games are hidden until opening night: rotations and minutes are experimental.
+  return games.filter((g) => !isNbaPreseasonDate(g.gameDate)).map((g): UnifiedGame => ({
     id: g.gameId,
     sport: 'nba',
     status: g.status,

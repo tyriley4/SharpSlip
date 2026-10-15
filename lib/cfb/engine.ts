@@ -1,5 +1,7 @@
 import type { Edge } from '@/data/breakdown/types'
 import { getAnalysisEdges } from '@/lib/edges/analysisEdges'
+import { detectGameContext } from '@/lib/edges/seasonContext'
+import type { SeasonContext } from '@/lib/edges/types'
 import { getCollegeDirectory, type CollegeTeam } from '@/lib/college/directory'
 import { getAllTeamStats, getGameSummary, getTeamInfo, getTeamRoster, scoreboardFor } from '@/lib/espn/api'
 import { teamBoxGames, type TeamGameBox } from '@/lib/football/box'
@@ -460,6 +462,7 @@ export interface CfbAnalysisData {
   awaySeason: CfbTeamSeason
   homeSeason: CfbTeamSeason
   edges: Edge[]
+  season: SeasonContext
   contextStats: { label: string; val: string; good: boolean }[]
   teamColors: Record<string, string>
 }
@@ -476,7 +479,8 @@ export async function getCfbAnalysis(gameId: string): Promise<CfbAnalysisData | 
   const awayQB = aq ? qbSeason(awaySeason.boxes, aq.id, matchup.away.abbr) : null
   const homeQB = hq ? qbSeason(homeSeason.boxes, hq.id, matchup.home.abbr) : null
 
-  const edges = await getAnalysisEdges('cfb', matchup.gameId, matchup.away.abbr, matchup.home.abbr)
+  const season = await detectGameContext({ sport: 'cfb', gameId: matchup.gameId, startTime: null })
+  const edges = season.isPreseason ? [] : await getAnalysisEdges('cfb', matchup.gameId, matchup.away.abbr, matchup.home.abbr)
 
   const rec = (s: CfbTeamSeason) => `${s.wins}-${s.losses}`
   const contextStats = [
@@ -495,6 +499,7 @@ export async function getCfbAnalysis(gameId: string): Promise<CfbAnalysisData | 
     awaySeason,
     homeSeason,
     edges,
+    season,
     contextStats,
     teamColors: { [matchup.away.abbr]: matchup.away.color, [matchup.home.abbr]: matchup.home.color },
   }

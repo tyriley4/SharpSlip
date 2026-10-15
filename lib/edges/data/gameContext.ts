@@ -1,5 +1,5 @@
 import { getCollegeDirectory } from '@/lib/college/directory'
-import { ESPN_REF, getAllTeamStats, getGameSummary, getInjuries, getTeamList } from '@/lib/espn/api'
+import { ESPN_REF, getAllTeamStats, getGameSummary, getInjuries, getStandings, getTeamList } from '@/lib/espn/api'
 import { fromEspnAbbr } from '@/lib/espn/teams'
 import { getLeagueData } from '@/lib/football/league'
 import { fetchJson } from '@/lib/mlb/fetchJson'
@@ -14,7 +14,11 @@ import { getGameOdds } from '@/lib/odds/api'
 import { getTeamResults } from '@/lib/odds/history'
 import { getVenueWeather } from '@/lib/weather/api'
 import type { Sport } from '@/lib/sport/SportContext'
+import { detectGameContext } from '../seasonContext'
+import { ALWAYS_INDOOR, nflIndoors } from '../venues'
 import type { DefenseRank, GameContext, InjuryNote, TeamGameRecord } from '../types'
+import { loadMlbGameInfo, mlbIndoors, type MlbGameInfo } from './mlbGame'
+import { loadTeammatesOut } from './teammates'
 
 /** ESPN season year for "now": basketball and hockey seasons are named for the year they end in. */
 export function currentSeasonYear(sport: Sport, now = new Date()): number {
@@ -87,7 +91,7 @@ async function defenseTables(sport: Sport): Promise<Record<string, Record<string
     put('Points', 'goals against per game', usable.map((r) => ({ abbr: r.abbr, value: r.goalsAgainstPerGame })))
     put('Assists', 'goals against per game', usable.map((r) => ({ abbr: r.abbr, value: r.goalsAgainstPerGame })))
   } else if (sport === 'mlb') {
-    interface Split { team: { id: number }; stat: { gamesPlayed?: number; hits?: number; homeRuns?: number; strikeOuts?: number } }
+    interface Split { team: { id: number }; stat: { gamesPlayed?: number; hits?: number; homeRuns?: number; strikeOuts?: number; plateAppearances?: number } }
     const year = currentSeasonYear('mlb')
     const [pit, hit, idx] = await Promise.all([
       fetchJson<{ stats: { splits: Split[] }[] }>(`https://statsapi.mlb.com/api/v1/teams/stats?stats=season&group=pitching&season=${year}&sportIds=1`, 21600, `edges-mlb-pit-${year}`),
@@ -104,6 +108,13 @@ async function defenseTables(sport: Sport): Promise<Record<string, Record<string
     put('Hits', 'hits allowed per game', rows(pit, (s) => s.hits))
     put('Home Runs', 'home runs allowed per game', rows(pit, (s) => s.homeRuns))
     put('Strikeouts', 'batter strikeouts per game', rows(hit, (s) => s.strikeOuts))
+    const kRate = (d: typeof hit) =>
+      (d?.stats?.[0]?.splits ?? []).flatMap((s) => {
+        const abbr = idx?.get(s.team.id)?.abbr
+        const pa = s.stat.plateAppearances ?? 0
+        return abbr && pa >= 150 && s.stat.strikeOuts !== undefined ? [{ abbr, value: (s.stat.strikeOuts / pa) * 100 }] : []
+      })
+    put('Strikeout rate', 'strikeout rate (K% of plate appearances)', kRate(hit))
   }
   return table
 }
@@ -122,33 +133,69 @@ function divisional(sport: Sport, a: string, h: string): boolean {
   return false
 }
 
-async function weatherFor(sport: Sport, gameId: string, home: string, startTime: string | null): Promise<GameContext['weather']> {
+async function weatherFor(sport: Sport, gameId: string, home: string, startTime: string | null, mlb: MlbGameInfo | null): Promise<GameContext['weather']> {
+  // Indoor sports never get a forecast.
+  if (ALWAYS_INDOOR.has(sport)) return null
+  const indoorWx = { tempF: null, windMph: null, windDirection: null, precipitation: false, indoor: true }
   try {
     let city: string | null = null
-    let indoor = false
+    if (sport === 'mlb') {
+      if (mlbIndoors(mlb)) return indoorWx
+      const w = mlb?.weather
+      if (!w) return null
+      return { tempF: w.tempF, windMph: w.windMph, windDirection: w.windDirection, precipitation: /rain|drizzle|snow|storm/i.test(w.condition), indoor: false }
+    }
     if (sport === 'nfl') {
       const rows = await getNFLSchedule(currentSeasonYear('nfl')).catch(() => null)
       const row = rows?.find((r) => r.game_id === gameId)
-      indoor = row ? /dome|closed/i.test(row.roof ?? '') : false
-      if (!indoor) {
-        const list = await getTeamList('football', 'nfl')
-        city = list?.find((t) => fromEspnAbbr('nfl', t.abbr) === home)?.location ?? null
-      }
+      if (nflIndoors(home, row?.roof)) return indoorWx
+      const list = await getTeamList('football', 'nfl')
+      city = list?.find((t) => fromEspnAbbr('nfl', t.abbr) === home)?.location ?? null
     } else if (sport === 'cfb') {
       const s = await getGameSummary('football', 'college-football', gameId)
-      indoor = s?.venue.indoor === true
+      if (s?.venue.indoor === true) return indoorWx
       city = s?.venue.city ? `${s.venue.city}${s.venue.state ? `,${s.venue.state},US` : ''}` : null
     } else {
       return null
     }
-    if (indoor) return { tempF: null, windMph: null, precipitation: false, indoor: true }
     if (!city) return null
     const w = await getVenueWeather(city, { gameTime: startTime })
     if (w.status !== 'ok') return null
-    return { tempF: w.tempF, windMph: w.windMph, precipitation: w.snow || w.currentlyRaining || (w.precipChancePct ?? 0) >= 60, indoor: false }
+    return { tempF: w.tempF, windMph: w.windMph, windDirection: null, precipitation: w.snow || w.currentlyRaining || (w.precipChancePct ?? 0) >= 60, indoor: false }
   } catch {
     return null
   }
+}
+
+/** Season win% for every team in the league, for splitting results by opponent quality. */
+async function leagueWinPct(sport: Sport): Promise<Record<string, number>> {
+  try {
+    const ref = ESPN_REF[sport]
+    const groups = await getStandings(ref.sport, ref.league)
+    const out: Record<string, number> = {}
+    for (const g of groups ?? [])
+      for (const e of g.entries) {
+        const w = e.nums.wins
+        const l = e.nums.losses
+        const t = e.nums.ties ?? 0
+        const pct = e.nums.winPercent ?? (w !== undefined && l !== undefined && w + l + t > 0 ? w / (w + l + t) : undefined)
+        if (pct !== undefined && (w ?? 0) + (l ?? 0) >= 4) out[e.abbr] = pct
+      }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+async function conferences(sport: Sport, teams: string[]): Promise<Record<string, string>> {
+  if (sport !== 'cfb' && sport !== 'cbb') return {}
+  const dir = await getCollegeDirectory(sport).catch(() => null)
+  const out: Record<string, string> = {}
+  for (const t of teams) {
+    const c = dir?.byAbbr.get(t)?.conference
+    if (c) out[t] = c
+  }
+  return out
 }
 
 /** Loads everything about one game that the evidence modules share. Cached an hour per game. */
@@ -167,6 +214,8 @@ export async function loadGameContext(sport: Sport, gameId: string, away: string
     ])
     const odds = oddsRes
     const startTime = odds?.commenceTime ?? null
+    const mlb = sport === 'mlb' ? await loadMlbGameInfo(gameId) : null
+    const [season, winLeague, conf] = await Promise.all([detectGameContext({ sport, gameId, startTime }), leagueWinPct(sport), conferences(sport, [away, home])])
     const results = { [away]: [...awayCur, ...awayPrev], [home]: [...homeCur, ...homePrev] }
     const priorSeasonOnly = awayCur.length === 0 && homeCur.length === 0
     const winPct: Record<string, number> = {}
@@ -180,6 +229,8 @@ export async function loadGameContext(sport: Sport, gameId: string, away: string
     }
     const hour = startTime ? Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/New_York' }).format(new Date(startTime))) % 24 : 0
     const weekday = startTime ? new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'America/New_York' }).format(new Date(startTime)) : ''
+    const injuries = injuryList(sport, [away, home], injuriesAll)
+    const teammatesOut = await loadTeammatesOut(sport, injuries).catch(() => [])
     const ctx: GameContext = {
       sport,
       gameId,
@@ -189,13 +240,18 @@ export async function loadGameContext(sport: Sport, gameId: string, away: string
       neutral: false,
       odds,
       results,
-      injuries: injuryList(sport, [away, home], injuriesAll),
+      injuries,
+      teammatesOut,
       defense,
       rest: { [away]: restFor(awayCur.length ? awayCur : awayPrev), [home]: restFor(homeCur.length ? homeCur : homePrev) },
       winPct,
-      weather: await weatherFor(sport, gameId, home, startTime),
+      weather: await weatherFor(sport, gameId, home, startTime, mlb),
       flags: { divisional: divisional(sport, away, home), primetime: (sport === 'nfl' || sport === 'cfb') && (hour >= 19 || weekday === 'Thu' || weekday === 'Mon'), rivalry: null },
       priorSeasonOnly,
+      season,
+      mlb,
+      leagueWinPct: winLeague,
+      conference: conf,
       lineMove: null,
     }
     return ctx

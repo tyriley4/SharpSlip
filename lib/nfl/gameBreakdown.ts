@@ -10,6 +10,8 @@ import {
   getActiveNFLSeason,
 } from './api'
 import { getAnalysisEdges } from '@/lib/edges/analysisEdges'
+import { detectGameContext } from '@/lib/edges/seasonContext'
+import type { SeasonContext } from '@/lib/edges/types'
 import { normalizeNflAbbr, NFL_TEAM_NAMES } from './divisions'
 
 function n(v: string | undefined): number {
@@ -564,6 +566,7 @@ export interface NFLAnalysisData {
   awayQB: NFLQBStats | null
   homeQB: NFLQBStats | null
   edges: Edge[]
+  season: SeasonContext
   contextStats: { label: string; val: string; good: boolean }[]
 }
 
@@ -592,7 +595,8 @@ export async function getNFLAnalysisData(gameId: string): Promise<NFLAnalysisDat
     homeQB ? getQBCpoe(homeQB.name, season) : Promise.resolve(null),
   ])
 
-  const edges = await getAnalysisEdges('nfl', matchup.gameId, matchup.away.abbr, matchup.home.abbr)
+  const gameSeason = await detectGameContext({ sport: 'nfl', gameId: matchup.gameId, startTime: null })
+  const edges = gameSeason.isPreseason ? [] : await getAnalysisEdges('nfl', matchup.gameId, matchup.away.abbr, matchup.home.abbr)
 
   const contextStats = [
     awayTeamStats ? { label: `${matchup.away.abbr} Record`, val: `${awayTeamStats.wins}-${awayTeamStats.losses}`, good: awayTeamStats.wins >= awayTeamStats.losses } : null,
@@ -603,5 +607,5 @@ export async function getNFLAnalysisData(gameId: string): Promise<NFLAnalysisDat
 
   const statsSeason = await getNFLStatsSeason(season)
 
-  return { matchup, statsSeason, awayQB, homeQB, edges, contextStats }
+  return { matchup, statsSeason, awayQB, homeQB, edges, season: gameSeason, contextStats }
 }

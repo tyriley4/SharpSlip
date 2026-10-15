@@ -1,40 +1,52 @@
 import { reportError } from '@/lib/monitoring/sentry'
-import { scoreConviction, edgeBaseScore } from './convictionScore'
+import { scoreConviction } from './convictionScore'
 import { getPlayerHistory } from './data/playerHistory'
 import { loadGameContext } from './data/gameContext'
+import { MIN_QUALITY, qualityOf } from './evidenceFramework'
 import { contextModule } from './modules/context'
 import { h2hModule } from './modules/h2h'
 import { hitRateModule, primaryRate } from './modules/hitRate'
 import { matchupModule } from './modules/matchup'
+import { opportunityModule } from './modules/opportunity'
 import { recentFormModule } from './modules/recentForm'
 import { situationalModule } from './modules/situational'
-import type { ModuleInput } from './modules/shared'
-import type { BettingOutcome, Edge, EdgeResult, GameContext, ModuleOutput, PlayerHistory } from './types'
+import { splitsModule } from './modules/splits'
+import type { ModuleExtras, ModuleInput } from './modules/shared'
+import { roleModule, type RoleOutput } from './roleContext'
+import type { BettingOutcome, Edge, EdgeResult, GameContext, Grade, ModuleOutput, PlayerHistory } from './types'
 
 const MAX_INSIGHTS = 8
 
-const MODULES: { name: string; run: (i: ModuleInput) => ModuleOutput }[] = [
+const MODULES: { name: string; run: (i: ModuleInput) => ModuleOutput & Partial<Pick<RoleOutput, 'gradeCap'>> }[] = [
+  { name: 'role', run: roleModule },
+  { name: 'opportunity', run: opportunityModule },
   { name: 'recentForm', run: recentFormModule },
   { name: 'hitRate', run: hitRateModule },
+  { name: 'splits', run: splitsModule },
   { name: 'matchup', run: matchupModule },
   { name: 'situational', run: situationalModule },
   { name: 'h2h', run: h2hModule },
   { name: 'context', run: contextModule },
 ]
 
+const ORDER: Grade[] = ['F', 'D', 'C', 'B', 'A']
+
 /**
- * Pure evaluation of one outcome against already-loaded context: runs the six evidence modules, scores conviction and
- * returns the supporting insights. Nothing here fetches data, so the same context serves every outcome in a game.
+ * Pure evaluation of one outcome against already-loaded context: runs the evidence modules (opportunity, statistical
+ * support, situational), drops anything below the quality bar, then scores conviction with the market layer on top.
+ * Nothing here fetches data, so the same context serves every outcome in a game.
  */
-export function evaluateWithContext(outcome: BettingOutcome, game: GameContext, history: PlayerHistory | null): EdgeResult {
-  const input: ModuleInput = { outcome, game, history }
+export function evaluateWithContext(outcome: BettingOutcome, game: GameContext, history: PlayerHistory | null, extras?: ModuleExtras): EdgeResult {
+  const input: ModuleInput = { outcome, game, history, extras }
   const edges: Edge[] = []
   let conflicts = 0
+  let gradeCap: { grade: Grade; note: string } | undefined
   for (const m of MODULES) {
     try {
       const out = m.run(input)
       edges.push(...out.edges)
       conflicts += out.conflicts
+      if (out.gradeCap && (!gradeCap || ORDER.indexOf(out.gradeCap.grade) < ORDER.indexOf(gradeCap.grade))) gradeCap = out.gradeCap
     } catch (err) {
       reportError(err, `edge-module-${m.name}`)
     }
@@ -42,26 +54,27 @@ export function evaluateWithContext(outcome: BettingOutcome, game: GameContext, 
 
   const primary = primaryRate(input)
   const historicalRate = primary ? primary.rate : null
-  const hitSamples = edges.filter((e) => e.category === 'hit_rate').map((e) => e.sample ?? 0)
+  const surfaced = edges.filter((e) => qualityOf(e) >= MIN_QUALITY)
+  const hitSamples = surfaced.filter((e) => e.category === 'hit_rate').map((e) => e.sample ?? 0)
   const sampleSize = primary ? primary.games : hitSamples.length ? Math.max(...hitSamples) : 0
 
-  const scoring = edges.filter((e) => e.weight > 0).sort((a, b) => edgeBaseScore(b) - edgeBaseScore(a))
-  const informational = edges.filter((e) => e.weight === 0)
-  const conviction = scoreConviction({ edges: scoring, conflicts, historicalRate, impliedProbability: outcome.impliedProbability ?? null, sampleSize })
+  const scoring = surfaced.filter((e) => e.weight > 0)
+  const informational = surfaced.filter((e) => e.weight === 0)
+  const conviction = scoreConviction({ edges: scoring, conflicts, historicalRate, impliedProbability: outcome.impliedProbability ?? null, sampleSize, season: game.season, gradeCap })
 
-  // Without a measurable history of this exact outcome there is nothing to grade, however many soft facts exist.
-  const hasHistory = historicalRate !== null
-  const grade = hasHistory ? conviction.grade : null
+  // Flat list ranked by quality score, best first.
+  const ranked = [...scoring, ...informational].sort((a, b) => qualityOf(b) - qualityOf(a) || b.relevanceScore * b.weight - a.relevanceScore * a.weight)
 
   return {
-    grade,
+    grade: conviction.grade,
     convictionScore: conviction.convictionScore,
     historicalHitRate: historicalRate === null ? null : Math.round(historicalRate * 1000) / 10,
-    edges: [...scoring, ...informational].slice(0, MAX_INSIGHTS),
-    isSharpFind: hasHistory && conviction.isSharpFind,
+    edges: ranked.slice(0, MAX_INSIGHTS),
+    isSharpFind: conviction.isSharpFind,
     sampleSize,
     limitedSample: conviction.limitedSample,
-    ungradedReason: grade ? undefined : hasHistory ? 'Insufficient data' : 'Insufficient data',
+    ungradedReason: conviction.ungradedReason,
+    gradeNote: conviction.gradeNote,
   }
 }
 

@@ -1,9 +1,31 @@
+import type { HitterMatchup } from '../data/mlbMatchup'
+import { sampleScale } from '../evidenceFramework'
 import type { BettingOutcome, Edge, GameContext, PlayerGameRecord, PlayerHistory, TeamGameRecord } from '../types'
+
+/** Extra per-outcome facts loaded ahead of time (async data the pure modules cannot fetch). */
+export interface ModuleExtras {
+  hitterMatchup?: HitterMatchup | null
+}
 
 export interface ModuleInput {
   outcome: BettingOutcome
   game: GameContext
   history: PlayerHistory | null
+  extras?: ModuleExtras
+}
+
+/** A minimum-sample threshold, doubled in the playoffs. */
+export const scaled = (n: number, game: GameContext) => Math.ceil(n * sampleScale(game.season))
+
+/** Spread and total from the posted line: the team's expected margin (positive = favoured) and the game total. */
+export function scriptOf(game: GameContext, team: string | undefined): { margin: number | null; total: number | null } {
+  const odds = game.odds
+  const homePoint = odds?.spread.home?.point ?? null
+  const awayPoint = odds?.spread.away?.point ?? null
+  let margin: number | null = null
+  if (team === game.home && homePoint !== null) margin = -homePoint
+  else if (team === game.away && awayPoint !== null) margin = -awayPoint
+  return { margin, total: odds?.total.line ?? null }
 }
 
 export const clamp01 = (x: number) => Math.max(0, Math.min(1, x))

@@ -52,7 +52,7 @@ async function mlb(q: CareerQuery, count: number): Promise<CareerGame[]> {
     for (const g of log ?? []) {
       const values: Record<string, number> = {}
       for (const c of cats) values[c] = Number(g.stat[categoryStatKey(c, group)] ?? 0)
-      out.push({ season: String(years[i]), date: ymd(g.date), home: g.isHome, opp: teams?.get(g.opponent.id)?.abbr ?? g.opponent.abbreviation, values })
+      out.push({ season: String(years[i]), date: ymd(g.date), home: g.isHome, opp: teams?.get(g.opponent.id)?.abbr ?? g.opponent.abbreviation, team: teams?.get(g.team?.id)?.abbr, values })
     }
   })
   return out
@@ -74,7 +74,8 @@ async function nba(q: CareerQuery, count: number): Promise<CareerGame[]> {
         const key = NBA_BETTING_STAT_KEY[c]
         values[c] = key === 'pra' ? g.pts + g.reb + g.ast : g[key]
       }
-      out.push({ season: seasons[i], date: ymd(g.gameDate), home: g.isHome, opp: g.opponentAbbr, values })
+      values.Minutes = g.min
+      out.push({ season: seasons[i], date: ymd(g.gameDate), home: g.isHome, opp: g.opponentAbbr, team: g.matchup.split(' ')[0], values })
     }
   })
   return out
@@ -89,7 +90,9 @@ async function nhl(q: CareerQuery, count: number): Promise<CareerGame[]> {
     for (const g of log ?? []) {
       const values: Record<string, number> = {}
       for (const [cat, key] of Object.entries(map)) values[cat] = Number((g as unknown as Record<string, number>)[key] ?? 0)
-      out.push({ season: String(seasons[i]), date: ymd(g.gameDate), home: g.isHome, opp: g.opponentAbbr, values })
+      const [mm, ss] = (g.toi || '0:0').split(':').map(Number)
+      if (!q.goalie) values.TOI = Math.round(((mm || 0) + (ss || 0) / 60) * 10) / 10
+      out.push({ season: String(seasons[i]), date: ymd(g.gameDate), home: g.isHome, opp: g.opponentAbbr, team: g.teamAbbr, values })
     }
   })
   return out
@@ -114,6 +117,8 @@ async function nfl(q: CareerQuery, count: number): Promise<CareerGame[]> {
           Completions: s.completions ?? 0,
           INTs: s.interceptions ?? 0,
           'Rush Yards': s.rushingYards ?? 0,
+          'Rush Attempts': s.rushingAttempts ?? 0,
+          Targets: s.receivingTargets ?? 0,
           'Receiving Yards': s.receivingYards ?? 0,
           Receptions: s.receptions ?? 0,
           'Anytime TD': (s.rushingTouchdowns ?? 0) + (s.receivingTouchdowns ?? 0),

@@ -71,6 +71,19 @@ export function RecommendedBetsTab({ sport, gameId, awayAbbr, homeAbbr }: { spor
 
       {load.state === 'ready' && (
         <>
+          {load.data.season.isPreseason ? (
+            <div className="rounded-[14px] border border-border bg-card px-4 py-10 text-center">
+              <div className="text-2xl">🧪</div>
+              <div className="mt-2 text-sm font-extrabold text-text">Preseason Game</div>
+              <p className="mx-auto mt-1 max-w-[420px] text-xs leading-relaxed text-muted">{load.data.seasonNote}</p>
+            </div>
+          ) : (
+            <>
+          {load.data.seasonNote && (
+            <div className={`rounded-xl border px-3 py-2 text-[11px] text-text2 ${load.data.season.isPlayoffs ? 'border-accent/25 bg-accent/[0.06]' : 'border-border bg-card text-muted'}`}>
+              {load.data.season.isPlayoffs ? '🏆 ' : ''}{load.data.season.isPlayoffs && load.data.season.playoffRound ? `${load.data.season.playoffRound}${load.data.season.seriesGame ? ` · Game ${load.data.season.seriesGame}` : ''} — ` : ''}{load.data.seasonNote}
+            </div>
+          )}
           {load.data.note && <div className="rounded-xl border border-warning/25 bg-warning/[0.07] px-3 py-2 text-[11px] text-text2">{load.data.note}</div>}
           {load.data.priorSeasonOnly && (
             <div className="rounded-xl border border-border bg-card px-3 py-2 text-[11px] text-text2">Based on previous-season data — current-season trends will update automatically once games are played.</div>
@@ -120,6 +133,8 @@ export function RecommendedBetsTab({ sport, gameId, awayAbbr, homeAbbr }: { spor
               )}
             </div>
           </div>
+            </>
+          )}
         </>
       )}
     </div>

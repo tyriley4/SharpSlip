@@ -11,6 +11,8 @@ export const GRADE_STYLE: Record<string, { bg: string; fg: string }> = {
   A: { bg: '#00E5A0', fg: '#08090C' },
   B: { bg: '#3B9EFF', fg: '#FFFFFF' },
   C: { bg: '#FFB800', fg: '#08090C' },
+  D: { bg: '#FF6B35', fg: '#08090C' },
+  F: { bg: '#4B5058', fg: '#D5D8DD' },
 }
 const UNGRADED = { bg: '#2A2D35', fg: '#8B909A' }
 
@@ -21,13 +23,22 @@ const CATEGORY_BADGE: Record<EdgeCategory, { icon: string; label: string }> = {
   situational: { icon: '⚠️', label: 'Situational' },
   h2h: { icon: '🔄', label: 'H2H' },
   context: { icon: '📊', label: 'Context' },
+  role: { icon: '🧭', label: 'Role' },
+}
+
+const GRADE_TITLE: Record<string, string> = {
+  A: 'Grade A — exceptional conviction',
+  B: 'Grade B — strong conviction',
+  C: 'Grade C — moderate conviction',
+  D: 'Grade D — weak evidence',
+  F: 'Grade F — no edge detected',
 }
 
 export function GradeBadge({ grade, size = 'md' }: { grade: string | null; size?: 'md' | 'lg' }) {
   const s = grade ? GRADE_STYLE[grade] : UNGRADED
   const dims = size === 'lg' ? 'h-11 w-11 text-xl' : 'h-8 w-8 text-sm'
   return (
-    <span className={`flex shrink-0 items-center justify-center rounded-lg font-black ${dims}`} style={{ background: s.bg, color: s.fg }} title={grade ? `Grade ${grade}` : 'Insufficient data - not graded'} aria-label={grade ? `Grade ${grade}` : 'Ungraded'}>
+    <span className={`flex shrink-0 items-center justify-center rounded-lg font-black ${dims}`} style={{ background: s.bg, color: s.fg }} title={grade ? GRADE_TITLE[grade] ?? `Grade ${grade}` : 'Not graded'} aria-label={grade ? `Grade ${grade}` : 'Ungraded'}>
       {grade ?? '—'}
     </span>
   )
@@ -63,8 +74,14 @@ export function InsightList({ insights }: { insights: BetCardData['insights'] })
 }
 
 /** One bet: description, price, grade and hit rate collapsed; supporting insights when expanded. */
-export function BetCard({ bet, defaultOpen = false, showMatchup = false }: { bet: BetCardData; defaultOpen?: boolean; showMatchup?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen)
+/** A, B and C bets open to their top two evidence items; D and F stay collapsed so weak lines do not crowd the tab. */
+const OPENS_BY_DEFAULT = new Set(['A', 'B', 'C'])
+
+export function BetCard({ bet, defaultOpen, showMatchup = false }: { bet: BetCardData; defaultOpen?: boolean; showMatchup?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen ?? (bet.grade !== null && OPENS_BY_DEFAULT.has(bet.grade)))
+  const [showAll, setShowAll] = useState(false)
+  const weak = bet.grade === 'D' || bet.grade === 'F'
+  const visible = weak || showAll ? bet.insights : bet.insights.slice(0, 2)
   const { settings } = useAccountData()
   const { addLeg, removeByLineId, hasLine } = useParlay()
   const inParlay = hasLine(bet.leg.lineId)
@@ -99,7 +116,9 @@ export function BetCard({ bet, defaultOpen = false, showMatchup = false }: { bet
               <span className="text-[10px] text-muted">Insufficient data</span>
             )}
             {bet.isSharpFind && <SharpFindBadge />}
-            {bet.limitedSample && bet.grade && <span className="text-[9px] text-warning">Limited sample</span>}
+            {bet.grade === 'D' && <span className="text-[9px] font-semibold text-[#FF6B35]">Weak evidence</span>}
+            {bet.grade === 'F' && <span className="text-[9px] font-semibold text-muted">{bet.gradeNote?.startsWith('Insufficient') ? 'Insufficient evidence' : 'No edge detected'}</span>}
+            {bet.limitedSample && bet.grade && bet.grade !== 'F' && <span className="text-[9px] text-warning">Limited sample</span>}
           </div>
         </div>
         <button
@@ -117,11 +136,17 @@ export function BetCard({ bet, defaultOpen = false, showMatchup = false }: { bet
       {open && (
         <div className="border-t border-border/60 px-3 pb-3 pt-2.5">
           {bet.insights.length > 0 ? (
-            <InsightList insights={bet.insights} />
+            <InsightList insights={visible} />
           ) : (
-            <p className="text-[11px] text-muted">Insufficient data — no supporting evidence clears the bar for this bet. You can still add it to a parlay and research it yourself.</p>
+            <p className="text-[11px] text-muted">No supporting evidence clears the quality bar for this bet. You can still add it to a parlay and research it yourself.</p>
           )}
-          {bet.limitedSample && <p className="mt-2 text-[10px] text-warning">Limited sample: the main evidence rests on fewer than 10 games, so the grade is capped at C.</p>}
+          {!weak && bet.insights.length > 2 && (
+            <button onClick={() => setShowAll((v) => !v)} className="mt-2 text-[11px] font-semibold text-accent hover:underline">
+              {showAll ? 'Show fewer insights ↑' : `Show all ${bet.insights.length} insights →`}
+            </button>
+          )}
+          {bet.gradeNote && <p className={`mt-2 text-[10px] ${bet.grade === 'F' ? 'font-semibold text-text2' : 'text-muted'}`}>{bet.gradeNote}</p>}
+          {bet.limitedSample && bet.grade !== 'F' && <p className="mt-2 text-[10px] text-warning">Limited sample: the main evidence rests on fewer than 10 games, so the grade is capped at C.</p>}
         </div>
       )}
     </div>

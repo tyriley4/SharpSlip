@@ -1,42 +1,68 @@
+import { q } from '../evidenceFramework'
 import { weightedPlayerRate, weightedTeamRate } from '../historicalRates'
 import type { Edge, ModuleOutput } from '../types'
-import { fmtPct, outcomeNoun, playerHit, rateRelevance, subjectTeam, teamHit, type ModuleInput } from './shared'
+import { fmtPct, outcomeNoun, playerHit, rateRelevance, scaled, subjectTeam, teamHit, type ModuleInput } from './shared'
 
 const W_CAREER_VS = 0.12
 const W_RECENT_VS = 0.06
 const W_TEAM_VS = 0.1
-/** Fewer meetings than this is anecdote, not pattern. */
+const W_VENUE_VS = 0.08
+/** Fewer meetings than this is anecdote, not pattern (doubled in the playoffs). */
 const MIN_MEETINGS = 3
 
+const sampleOf = (n: number) => (n >= 12 ? 3 : n >= 6 ? 2 : 1)
+
 /**
- * MODULE 5: how has this player or team done against this specific opponent? Needs at least three meetings;
- * team-vs-team looks back three seasons at most (older rosters are not comparable).
+ * How has this player or team done against this specific opponent? Needs at least three meetings (six in the
+ * playoffs); recent seasons weigh more; a player's record at this exact venue is a separate, narrower item.
  */
 export function h2hModule({ outcome: o, game, history }: ModuleInput): ModuleOutput {
   const edges: Edge[] = []
   let conflicts = 0
   const noun = outcomeNoun(o)
+  const minMeetings = scaled(MIN_MEETINGS, game)
 
   if (o.type === 'player_prop') {
     const opp = o.opponent
     if (!opp || !history) return { edges, conflicts }
     const vs = history.games.filter((g) => g.opp === opp)
-    if (vs.length < MIN_MEETINGS) return { edges, conflicts }
+    if (vs.length < minMeetings) return { edges, conflicts }
     const r = weightedPlayerRate(vs, (g) => playerHit(o, g))
     if (r && r.rate > 0.52) {
       edges.push({
-        description: `Against ${opp}, cleared ${noun} in ${r.hits} of ${r.games} career games (${fmtPct(r.hits / r.games)})`,
+        description: `Against ${opp}, has cleared ${noun} in ${r.hits} of ${r.games} career games (${fmtPct(r.hits / r.games)})`,
         category: 'h2h',
         relevanceScore: rateRelevance(r.hits / r.games),
         supportingData: 'Recent seasons weighted more',
         weight: W_CAREER_VS,
         sample: r.games,
+        seasonsAgo: 1,
+        quality: q(3, 3, 1, sampleOf(r.games)),
       })
       const last3 = vs.slice(0, 3).map((g) => playerHit(o, g))
       if (last3.length === 3 && last3.every((x) => x === true)) {
-        edges.push({ description: `Cleared ${noun} in each of the last 3 meetings with ${opp}`, category: 'h2h', relevanceScore: 0.7, supportingData: vs.slice(0, 3).map((g) => g.values[o.category ?? '']).join(', '), weight: W_RECENT_VS, sample: 3 })
+        edges.push({ description: `Cleared ${noun} in each of the last 3 meetings with ${opp}`, category: 'h2h', relevanceScore: 0.7, supportingData: vs.slice(0, 3).map((g) => g.values[o.category ?? '']).join(', '), weight: W_RECENT_VS, sample: 3, quality: q(3, 3, 2, 0) })
       }
     } else if (r && r.rate < 0.48) conflicts++
+
+    // Tonight's exact venue: his games against this opponent in this home/road situation.
+    const home = o.homeAway === 'home' ? true : o.homeAway === 'away' ? false : null
+    if (home !== null) {
+      const here = vs.filter((g) => g.home === home)
+      const vr = here.length >= scaled(4, game) ? weightedPlayerRate(here, (g) => playerHit(o, g)) : null
+      if (vr && vr.rate > 0.6 && vr.games >= scaled(4, game)) {
+        edges.push({
+          description: `In ${vr.games} career games ${home ? 'at home' : 'on the road'} against ${opp}, has cleared ${noun} ${vr.hits} times (${fmtPct(vr.hits / vr.games)})`,
+          category: 'h2h',
+          relevanceScore: rateRelevance(vr.hits / vr.games),
+          supportingData: `Tonight's venue and opponent`,
+          weight: W_VENUE_VS,
+          sample: vr.games,
+          seasonsAgo: 1,
+          quality: q(3, 3, 1, sampleOf(vr.games)),
+        })
+      }
+    }
     return { edges, conflicts }
   }
 
@@ -45,18 +71,21 @@ export function h2hModule({ outcome: o, game, history }: ModuleInput): ModuleOut
   const other = o.type === 'total' ? game.away : o.team?.opponent
   if (!other) return { edges, conflicts }
   const meets = (subjectGames ?? []).filter((g) => g.opp === other)
-  if (meets.length < MIN_MEETINGS) return { edges, conflicts }
+  if (meets.length < minMeetings) return { edges, conflicts }
   const r = weightedTeamRate(meets, (g) => teamHit(o, g))
-  if (r && r.games >= MIN_MEETINGS) {
+  if (r && r.games >= minMeetings) {
     const raw = r.hits / r.games
     if (raw > 0.52) {
+      const seasons = new Set(meets.map((g) => g.season)).size
       edges.push({
-        description: `In the last ${new Set(meets.map((g) => g.season)).size} season${new Set(meets.map((g) => g.season)).size === 1 ? '' : 's'} of meetings: ${o.type === 'moneyline' ? `${subjectTeam(o)} won` : `cleared ${noun}`} in ${r.hits} of ${r.games}`,
+        description: `In the last ${seasons} season${seasons === 1 ? '' : 's'} of meetings: ${o.type === 'moneyline' ? `${subjectTeam(o)} won` : `cleared ${noun}`} in ${r.hits} of ${r.games}`,
         category: 'h2h',
         relevanceScore: rateRelevance(raw),
         supportingData: 'Three-season window; older meetings are not used',
         weight: W_TEAM_VS,
         sample: r.games,
+        seasonsAgo: 1,
+        quality: q(3, 3, 1, sampleOf(r.games)),
       })
     } else if (raw < 0.48) conflicts++
   }

@@ -13,6 +13,7 @@ import type { CollegeSlate } from '@/lib/college/slate'
 import type { LiveNbaGame } from '@/lib/nba/mappers'
 import type { LiveNflGame } from '@/lib/nfl/mappers'
 import type { LiveNhlGame } from '@/lib/nhl/mappers'
+import { NBA_PRESEASON_BANNER } from '@/lib/edges/seasonText'
 import { useSport } from '@/lib/sport/SportContext'
 
 export function GamesPageClient({
@@ -22,6 +23,7 @@ export function GamesPageClient({
   nflDataUpdating,
   nflWeek,
   nbaGames,
+  nbaPreseason,
   nhlGames,
   cfbSlate,
   cbbSlate,
@@ -32,6 +34,8 @@ export function GamesPageClient({
   nflDataUpdating: boolean
   nflWeek: string | null
   nbaGames: LiveNbaGame[] | null
+  /** True before the October 20 opener: preseason games are hidden and a banner explains why. */
+  nbaPreseason: boolean
   nhlGames: LiveNhlGame[] | null
   cfbSlate: CollegeSlate | null
   cbbSlate: CollegeSlate | null
@@ -98,6 +102,9 @@ export function GamesPageClient({
             <h1 className="text-base font-extrabold text-text md:text-2xl">Today&apos;s NBA Slate</h1>
             <p className="mt-0.5 text-[11px] text-muted md:mt-1 md:text-[13px]">{today}</p>
           </div>
+          {nbaPreseason && (
+            <div className="rounded-xl border border-accent/25 bg-accent/[0.06] px-3.5 py-3 text-[12px] leading-snug text-text2">🏀 {NBA_PRESEASON_BANNER}</div>
+          )}
           {nbaGames === null ? (
             <DataUnavailable label="NBA schedule" />
           ) : nbaGames.length === 0 ? (

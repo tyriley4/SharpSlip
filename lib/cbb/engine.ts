@@ -1,5 +1,7 @@
 import type { Edge } from '@/data/breakdown/types'
 import { getAnalysisEdges } from '@/lib/edges/analysisEdges'
+import { detectGameContext } from '@/lib/edges/seasonContext'
+import type { SeasonContext } from '@/lib/edges/types'
 import { getCollegeDirectory, type CollegeTeam } from '@/lib/college/directory'
 import { getGameSummary, getTeamInfo } from '@/lib/espn/api'
 import { cached } from '@/lib/net/ttlCache'
@@ -329,6 +331,7 @@ export interface CbbAnalysisData {
   awaySeason: CbbTeamSeason
   homeSeason: CbbTeamSeason
   edges: Edge[]
+  season: SeasonContext
   contextStats: { label: string; val: string; good: boolean }[]
   teamColors: Record<string, string>
   /** Set when profiles are last season's because this season hasn't started. */
@@ -340,7 +343,8 @@ export async function getCbbAnalysis(gameId: string): Promise<CbbAnalysisData | 
   if (!matchup) return null
   // A finished game only knows what led up to it; show the season's profile as of now, which is a fair proxy for Final games too.
   const [awaySeason, homeSeason] = await Promise.all([getCbbTeamSeason(matchup.away.id, matchup.away.abbr, matchup.season), getCbbTeamSeason(matchup.home.id, matchup.home.abbr, matchup.season)])
-  const edges = await getAnalysisEdges('cbb', matchup.gameId, matchup.away.abbr, matchup.home.abbr)
+  const season = await detectGameContext({ sport: 'cbb', gameId: matchup.gameId, startTime: null })
+  const edges = season.isPreseason ? [] : await getAnalysisEdges('cbb', matchup.gameId, matchup.away.abbr, matchup.home.abbr)
   const rec = (s: CbbTeamSeason) => `${s.wins}-${s.losses}`
   const contextStats = [
     { label: `${matchup.away.abbr} Record`, val: matchup.away.record ?? rec(awaySeason), good: awaySeason.wins >= awaySeason.losses },
@@ -356,6 +360,7 @@ export async function getCbbAnalysis(gameId: string): Promise<CbbAnalysisData | 
     awaySeason,
     homeSeason,
     edges,
+    season,
     contextStats,
     teamColors: { [matchup.away.abbr]: matchup.away.color, [matchup.home.abbr]: matchup.home.color },
     priorSeasonNote: prior ? `Showing ${seasonLabel(matchup.season - 1)} results — the ${seasonLabel(matchup.season)} season hasn’t produced enough games yet.` : null,

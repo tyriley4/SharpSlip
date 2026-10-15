@@ -44,7 +44,7 @@ export function BestBetsDrawer({ bets, onClose }: { bets: TodayBet[]; onClose: (
                   </div>
                   {items.map((r) => (
                     <div key={r.bet.id} className="flex flex-col gap-1">
-                      <BetCard bet={r.bet} showMatchup />
+                      <BetCard bet={r.bet} showMatchup defaultOpen={false} />
                       <Link href={r.href} onClick={onClose} className="pl-1 text-[10px] font-semibold text-accent hover:underline">
                         View full breakdown →
                       </Link>

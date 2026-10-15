@@ -7,6 +7,7 @@ import { slugify } from '@/lib/players/slug'
 import type { Sport } from '@/lib/sport/SportContext'
 import { loadGameContext } from './data/gameContext'
 import { categoryForMarket, getPlayerHistory } from './data/playerHistory'
+import { loadHitterMatchup } from './data/mlbMatchup'
 import { evaluateWithContext } from './edgeEngine'
 import type { BettingOutcome, EdgeCategory, Grade } from './types'
 
@@ -70,7 +71,9 @@ async function todaysGames(): Promise<UnifiedGame[]> {
 export async function getPlayerConviction(args: PlayerConvictionArgs): Promise<PlayerConviction> {
   const { sport, name, team, category, thresholds } = args
   const key = `edges:playerconv:${sport}:${slugify(name)}:${team}:${category}:${thresholds.join(',')}:${args.pitching ? 'p' : 'h'}`
-  const result = await cached(key, 3600, async (): Promise<PlayerConviction> => {
+  // Failures (missing history, upstream errors) are returned but never cached, so a transient outage cannot stick for an hour.
+  let miss: PlayerConviction | null = null
+  const result = await cached(key, 3600, async (): Promise<PlayerConviction | null> => {
     try {
       const abbr = team.toUpperCase()
       const games = (await todaysGames()).filter((g) => g.sport === sport && (g.away.abbr.toUpperCase() === abbr || g.home.abbr.toUpperCase() === abbr))
@@ -79,8 +82,20 @@ export async function getPlayerConviction(args: PlayerConvictionArgs): Promise<P
       const home = game.home.abbr.toUpperCase() === abbr
       const opponent = home ? game.away.abbr : game.home.abbr
       const ctx = await loadGameContext(sport, game.id, game.away.abbr, game.home.abbr)
+      if (ctx.season.isPreseason) return none('Preseason game')
       const history = await getPlayerHistory(sport, name, team, category, { pitching: args.pitching })
-      if (!history) return none('No game history for this player')
+      if (!history) {
+        miss = none('No game history for this player')
+        return null
+      }
+
+      const position = history.position || ''
+      let hitterMatchup = null
+      if (sport === 'mlb' && !args.pitching && category !== 'Strikeouts' && ctx.mlb) {
+        // The probable starter is the opposing team's.
+        const opposing = abbr === game.away.abbr.toUpperCase() ? ctx.mlb.probables.home : ctx.mlb.probables.away
+        if (opposing) hitterMatchup = await loadHitterMatchup(history.playerId, opposing.id, opposing.name, new Date().getUTCFullYear()).catch(() => null)
+      }
 
       const posted = await getCachedPlayerProps(sport, game.id, { away: game.away.abbr, home: game.home.abbr })
       const offers = (posted?.props ?? []).filter((o) => slugify(o.player) === slugify(name) && categoryForMarket(sport, o.marketLabel) === category)
@@ -98,7 +113,7 @@ export async function getPlayerConviction(args: PlayerConvictionArgs): Promise<P
           type: 'player_prop',
           sport,
           gameId: game.id,
-          player: { name, team },
+          player: { name, team, position },
           category,
           threshold: line,
           direction: 'over',
@@ -107,7 +122,7 @@ export async function getPlayerConviction(args: PlayerConvictionArgs): Promise<P
           opponent,
           homeAway: home ? 'home' : 'away',
         }
-        const r = evaluateWithContext(outcome, ctx, history)
+        const r = evaluateWithContext(outcome, ctx, history, { hitterMatchup })
         return {
           threshold: t,
           grade: r.grade,
@@ -121,15 +136,16 @@ export async function getPlayerConviction(args: PlayerConvictionArgs): Promise<P
       })
 
       // A line cleared 95%+ of the time pays next to nothing, so it only wins when every graded line is that safe.
-      const graded = rows.filter((r) => r.grade)
+      const graded = rows.filter((r) => r.grade && ['A', 'B', 'C'].includes(r.grade))
       const worthwhile = graded.filter((r) => (r.historicalHitRate ?? 0) < 95)
       const pool = worthwhile.length ? worthwhile : graded
       const best = pool.length ? pool.reduce((a, b) => (b.convictionScore > a.convictionScore || (b.convictionScore === a.convictionScore && b.threshold > a.threshold) ? b : a)).threshold : null
       return { available: true, matchup: `${game.away.abbr} @ ${game.home.abbr}`, href: game.href, opponent, thresholds: rows, best }
     } catch (err) {
       reportError(err, 'player-conviction')
-      return none('Analysis unavailable')
+      miss = none('Analysis unavailable')
+      return null
     }
   })
-  return result ?? none('Analysis unavailable')
+  return result ?? miss ?? none('Analysis unavailable')
 }

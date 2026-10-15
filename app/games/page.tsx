@@ -8,6 +8,7 @@ import { getActiveNFLSeason, getCurrentNFLSeason, getNFLSchedule } from '@/lib/n
 import { nflWeekSlate } from '@/lib/nfl/espnOverlay'
 import { getAllNHLGoalieStats, getAllNHLTeamStats, getNHLStandings, getTodaysNHLGames } from '@/lib/nhl/api'
 import { mapNhlGamesForList } from '@/lib/nhl/mappers'
+import { isNbaPreseasonDate } from '@/lib/edges/seasonText'
 
 export const revalidate = 3600
 
@@ -38,7 +39,10 @@ export default async function GamesPage() {
   const nflWeek = nflGames && nflGames.length > 0 ? nflGames[0].week : null
 
   const nbaTeamStatsMap = new Map((nbaTeamStats ?? []).map((t) => [t.teamId, t]))
-  const nbaGameCards = nbaGames ? mapNbaGamesForList(nbaGames, nbaStandings, nbaTeamStatsMap) : null
+  // NBA preseason games are hidden until the October 20 opener.
+  const nbaPreseason = isNbaPreseasonDate(new Date().toISOString())
+  const nbaRegular = nbaGames ? nbaGames.filter((g) => !isNbaPreseasonDate(g.gameDate)) : null
+  const nbaGameCards = nbaRegular ? mapNbaGamesForList(nbaRegular, nbaStandings, nbaTeamStatsMap) : null
 
   const nhlTeamStatsMap = new Map((nhlTeamStats ?? []).map((t) => [t.abbr, t]))
   const nhlGameCards = nhlGames ? mapNhlGamesForList(nhlGames, nhlStandings, nhlTeamStatsMap, nhlGoalieStats ?? []) : null
@@ -51,6 +55,7 @@ export default async function GamesPage() {
       nflDataUpdating={nflSeason !== getCurrentNFLSeason()}
       nflWeek={nflWeek}
       nbaGames={nbaGameCards}
+      nbaPreseason={nbaPreseason}
       nhlGames={nhlGameCards}
       cfbSlate={cfbSlate}
       cbbSlate={cbbSlate}

@@ -32,7 +32,7 @@ async function scan(): Promise<TodayBet[]> {
   await mapWithConcurrency(picked, 4, async (g) => {
     const rec = await getRecommendedBets(g.sport, g.id, g.away.abbr, g.home.abbr, 'cached')
     for (const b of [...rec.gameLines, ...rec.props.flatMap((p) => p.players.flatMap((x) => x.bets))]) {
-      if (b.grade) out.push({ bet: b, href: g.href, startTime: g.startTime })
+      if (b.grade && ['A', 'B', 'C'].includes(b.grade)) out.push({ bet: b, href: g.href, startTime: g.startTime })
     }
   })
   return out.sort((a, b) => b.bet.convictionScore - a.bet.convictionScore)

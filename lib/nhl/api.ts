@@ -598,6 +598,8 @@ export interface NHLPlayerGameLogRow {
   gameId: string
   gameDate: string
   opponentAbbr: string
+  /** The player's own team that game. */
+  teamAbbr: string
   isHome: boolean
   result: 'W' | 'L' | null
   // skater fields
@@ -649,6 +651,7 @@ export async function getNHLPlayerGameLog(playerId: number, season: number = NHL
       gameId: String(g.gameId),
       gameDate: g.gameDate,
       opponentAbbr: g.opponentAbbrev,
+      teamAbbr: g.teamAbbrev,
       isHome: g.homeRoadFlag === 'H',
       result: g.decision === 'W' ? 'W' : g.decision ? 'L' : null,
       goals: n(g.goals),

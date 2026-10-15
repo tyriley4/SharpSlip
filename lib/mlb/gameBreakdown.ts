@@ -15,6 +15,8 @@ import {
 } from './api'
 import { computeHitRate, mostRecentFirst } from './bettingStats'
 import { getAnalysisEdges } from '@/lib/edges/analysisEdges'
+import { detectGameContext } from '@/lib/edges/seasonContext'
+import type { SeasonContext } from '@/lib/edges/types'
 
 // ---------------------------------------------------------------------------
 // Game matchup (status, score, inning, probable pitchers, venue, weather)
@@ -487,6 +489,7 @@ export interface RealGameBreakdown {
   matchup: GameMatchup
   pitchers: { away: ProbablePitcherStats | null; home: ProbablePitcherStats | null }
   edges: Edge[]
+  season: SeasonContext
   contextStats: ContextStat[]
   batting: { away: RealTeamLineup; home: RealTeamLineup }
   teamHitting: { away: TeamHittingContext | null; home: TeamHittingContext | null }
@@ -573,7 +576,8 @@ export async function getRealGameBreakdown(gamePk: number): Promise<RealGameBrea
       getLeagueHittingAverages(),
     ])
 
-  const edges = await getAnalysisEdges('mlb', String(matchup.gamePk), matchup.away.abbr, matchup.home.abbr)
+  const season = await detectGameContext({ sport: 'mlb', gameId: String(matchup.gamePk), startTime: null })
+  const edges = season.isPreseason ? [] : await getAnalysisEdges('mlb', String(matchup.gamePk), matchup.away.abbr, matchup.home.abbr)
   const contextStats = buildContextStats(
     { abbr: matchup.away.abbr, standings: awayStandings },
     { abbr: matchup.home.abbr, standings: homeStandings }
@@ -591,6 +595,7 @@ export async function getRealGameBreakdown(gamePk: number): Promise<RealGameBrea
     matchup,
     pitchers: { away: awayPitcherStats, home: homePitcherStats },
     edges,
+    season,
     contextStats,
     batting: {
       away: { posted: lineups?.away.posted ?? false, players: awayLineupStats },

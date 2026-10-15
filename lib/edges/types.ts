@@ -1,9 +1,13 @@
 import type { GameOdds } from '@/lib/odds/types'
 import type { Sport } from '@/lib/sport/SportContext'
+import type { MlbGameInfo } from './data/mlbGame'
 
 export type OutcomeType = 'moneyline' | 'spread' | 'total' | 'player_prop' | 'first_half' | 'first_period'
 export type Direction = 'over' | 'under' | 'home' | 'away'
-export type EdgeCategory = 'recent_form' | 'hit_rate' | 'matchup' | 'situational' | 'h2h' | 'context'
+export type EdgeCategory = 'recent_form' | 'hit_rate' | 'matchup' | 'situational' | 'h2h' | 'context' | 'role'
+
+/** The four layers a sharp bettor weighs: opportunity, statistical support, situation, and the market price. */
+export type EvidenceLayer = 'opportunity' | 'statistical' | 'situational' | 'market'
 
 export interface PlayerContext {
   name: string
@@ -51,9 +55,16 @@ export interface Edge {
   oppositionMultiplier?: number
   /** Games the evidence rests on (used for the sample-size cap). */
   sample?: number
+  layer?: EvidenceLayer
+  /** Days since the newest game behind this evidence (null/undefined = season-long or career pattern). */
+  ageDays?: number
+  /** Whole seasons ago the evidence is from (0 = this season); drives the recency weight. */
+  seasonsAgo?: number
+  /** Quality sub-scores, each 0-3; set by the module or derived from the other fields. */
+  quality?: { specificity: number; causality: number; recency: number; sample: number }
 }
 
-export type Grade = 'A' | 'B' | 'C'
+export type Grade = 'A' | 'B' | 'C' | 'D' | 'F'
 
 export interface EdgeResult {
   grade: Grade | null
@@ -68,6 +79,8 @@ export interface EdgeResult {
   limitedSample: boolean
   /** Why there is no grade, in plain words. */
   ungradedReason?: string
+  /** One plain sentence under the grade (no-edge, no live odds, role caps). */
+  gradeNote?: string
 }
 
 /** What one evidence module returns: supporting edges, plus how many facts point the other way (never shown). */
@@ -81,6 +94,7 @@ export interface PlayerGameRecord {
   date: string
   home?: boolean
   opp?: string
+  team?: string
   values: Record<string, number>
 }
 
@@ -118,6 +132,25 @@ export interface DefenseRank {
   label: string
 }
 
+/** A teammate who is out or doubtful, with how much he normally plays or touches the ball (null when unmeasured). */
+export interface TeammateOut {
+  team: string
+  player: string
+  position: string
+  designation: InjuryNote['designation']
+  usage: { label: string; value: number } | null
+}
+
+export interface SeasonContext {
+  isPreseason: boolean
+  isPlayoffs: boolean
+  isRegularSeason: boolean
+  /** First four weeks of the regular season. */
+  isEarlySeason: boolean
+  playoffRound?: string
+  seriesGame?: number
+}
+
 /** Everything about the game itself, loaded once and shared by every outcome in it. */
 export interface GameContext {
   sport: Sport
@@ -136,11 +169,21 @@ export interface GameContext {
   rest: Record<string, number | null>
   /** Season win% by team abbreviation for opponent-quality weighting. */
   winPct: Record<string, number>
-  weather: { tempF: number | null; windMph: number | null; precipitation: boolean; indoor: boolean } | null
+  weather: { tempF: number | null; windMph: number | null; windDirection?: string | null; precipitation: boolean; indoor: boolean } | null
   /** Context flags. */
   flags: { divisional: boolean; primetime: boolean; rivalry: string | null }
   /** True when no current-season games exist yet and history is last season. */
   priorSeasonOnly: boolean
+  /** Regular season / preseason / playoffs, early-season flag and series info. */
+  season: SeasonContext
+  /** Injured teammates whose absence is material (current-season usage above a floor). */
+  teammatesOut: TeammateOut[]
+  /** MLB: lineups, probable starters, roof and game-time weather from the league feed. */
+  mlb: MlbGameInfo | null
+  /** Season win% for every team in the league (current season), for opponent-quality splits. */
+  leagueWinPct: Record<string, number>
+  /** College only: each team's conference, for power-conference weighting. */
+  conference: Record<string, string>
   /** Opening line vs now, when the line archive has both. */
   lineMove: { total: { open: number; now: number } | null; spread: { open: number; now: number } | null } | null
 }

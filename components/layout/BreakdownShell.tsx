@@ -4,6 +4,8 @@ import { TrackOnMount } from '@/components/analytics/TrackOnMount'
 import { ProfileButton } from '@/components/layout/ProfileButton'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TeamLink } from '@/components/teams/TeamLink'
+import { PLAYOFF_BANNER, PRESEASON_ANALYSIS_NOTE } from '@/lib/edges/seasonText'
+import type { SeasonContext } from '@/lib/edges/types'
 import type { Sport } from '@/lib/sport/SportContext'
 
 export interface BreakdownTab {
@@ -27,6 +29,7 @@ export function BreakdownShell({
   tabs,
   activeTab,
   onChangeTab,
+  season,
   children,
 }: {
   /** When provided, the team abbreviations in the header link to their team pages. */
@@ -46,8 +49,11 @@ export function BreakdownShell({
   tabs: BreakdownTab[]
   activeTab: string
   onChangeTab: (id: string) => void
+  /** Preseason games show game info only; playoff games note the evidence weighting. */
+  season?: SeasonContext
   children: React.ReactNode
 }) {
+  const preseason = season?.isPreseason === true
   return (
     <div className="mx-auto flex w-full max-w-[1400px] bg-background">
       <TrackOnMount event="game_breakdown_opened" gameFromPath properties={{ ...(sport ? { sport } : {}), teamHome: homeAbbr, teamAway: awayAbbr }} />
@@ -104,7 +110,7 @@ export function BreakdownShell({
             </div>
             <ProfileButton />
           </div>
-          <div className="flex gap-0 overflow-x-auto border-t border-border pt-2 [scrollbar-width:none] md:gap-1.5 md:pt-3 [&::-webkit-scrollbar]:hidden">
+          {!preseason && <div className="flex gap-0 overflow-x-auto border-t border-border pt-2 [scrollbar-width:none] md:gap-1.5 md:pt-3 [&::-webkit-scrollbar]:hidden">
             {tabs.map((t) => {
               const active = activeTab === t.id
               return (
@@ -122,9 +128,26 @@ export function BreakdownShell({
                 </button>
               )
             })}
-          </div>
+          </div>}
         </div>
-        <div className="flex-1 overflow-y-auto pb-6 md:pb-10">{children}</div>
+        <div className="flex-1 overflow-y-auto pb-6 md:pb-10">
+          {preseason ? (
+            <div className="m-3.5 rounded-[14px] border border-border bg-card px-4 py-10 text-center md:m-8">
+              <div className="text-2xl">🧪</div>
+              <div className="mt-2 text-sm font-extrabold text-text">Preseason Game</div>
+              <p className="mx-auto mt-1 max-w-[420px] text-xs leading-relaxed text-muted">{PRESEASON_ANALYSIS_NOTE}</p>
+            </div>
+          ) : (
+            <>
+              {season?.isPlayoffs && activeTab === 'Analysis' && (
+                <div className="mx-3.5 mt-3 rounded-xl border border-accent/25 bg-accent/[0.06] px-3 py-2 text-[11px] text-text2 md:mx-8">
+                  🏆 {season.playoffRound ? `${season.playoffRound}${season.seriesGame ? ` · Game ${season.seriesGame}` : ''} — ` : ''}{PLAYOFF_BANNER}
+                </div>
+              )}
+              {children}
+            </>
+          )}
+        </div>
       </div>
     </div>
   )

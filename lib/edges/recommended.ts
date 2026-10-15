@@ -8,10 +8,12 @@ import { fmtLine, mk } from '@/lib/parlay/lines'
 import { slugify } from '@/lib/players/slug'
 import type { Sport } from '@/lib/sport/SportContext'
 import { loadGameContext } from './data/gameContext'
+import { loadHitterMatchup, type HitterMatchup } from './data/mlbMatchup'
+import { EARLY_SEASON_NOTE, PLAYOFF_BANNER, PRESEASON_ANALYSIS_NOTE } from './seasonText'
 import { getPlayerHistory, categoryForMarket } from './data/playerHistory'
 import { rosterIndex } from './data/rosters'
 import { evaluateWithContext } from './edgeEngine'
-import type { BettingOutcome, Edge, EdgeResult, Grade, GameContext, PlayerHistory } from './types'
+import type { BettingOutcome, Edge, EdgeResult, Grade, GameContext, PlayerHistory, SeasonContext } from './types'
 
 export interface BetInsight {
   description: string
@@ -49,6 +51,8 @@ export interface BetCardData {
   limitedSample: boolean
   sampleSize: number
   ungradedReason?: string
+  /** One plain sentence about the grade: no-edge, weak evidence, no live odds, role cap. */
+  gradeNote?: string
   insights: BetInsight[]
   leg: BetLeg
   sport: Sport
@@ -77,6 +81,9 @@ export interface RecommendedBets {
   firstHalfNote: string
   /** History is last season because the current one has not produced results yet. */
   priorSeasonOnly: boolean
+  season: SeasonContext
+  /** Banner for the tab: preseason (no analysis), playoff weighting or early season. */
+  seasonNote: string | null
   /** Engine failed for the game as a whole. */
   unavailable: boolean
 }
@@ -116,6 +123,7 @@ function card(
     limitedSample: r.limitedSample,
     sampleSize: r.sampleSize,
     ungradedReason: r.ungradedReason,
+    gradeNote: r.gradeNote,
     insights: insightsOf(r),
     sport: base.sport,
     gameId: base.gameId,
@@ -236,6 +244,11 @@ export async function buildRecommended(sport: Sport, gameId: string, away: strin
   const matchup = `${away} @ ${home}`
   const game = await loadGameContext(sport, gameId, away, home)
   const odds = game.odds
+  const season = game.season
+  if (season.isPreseason) {
+    return { sport, gameId, matchup, generatedAt: new Date().toISOString(), oddsSource: 'estimated', note: null, gameLines: [], props: [], propsNote: null, firstHalfNote: FIRST_HALF_NOTE[sport], priorSeasonOnly: false, season, seasonNote: PRESEASON_ANALYSIS_NOTE, unavailable: false }
+  }
+  const seasonNote = season.isPlayoffs ? PLAYOFF_BANNER : season.isEarlySeason ? EARLY_SEASON_NOTE : null
 
   // ---- Game lines
   const specs = odds ? realLineSpecs(odds, sport, gameId, matchup) : []
@@ -271,6 +284,22 @@ export async function buildRecommended(sport: Sport, gameId: string, away: strin
     histories.set(name, category ? await getPlayerHistory(sport, name, hit?.team ?? '', category) : null)
   })
 
+  // MLB hitters: platoon split and history against tonight's starter, loaded once per hitter.
+  const hitterMatchups = new Map<string, HitterMatchup | null>()
+  if (sport === 'mlb' && game.mlb) {
+    const year = new Date().getUTCFullYear()
+    await mapWithConcurrency(players, 5, async (name) => {
+      const hit = roster.get(slugify(name))
+      const history = histories.get(name)
+      const offer = offers.find((o) => o.player === name)!
+      const category = categoryForMarket(sport, offer.marketLabel)
+      if (!hit || !history || !category || category === 'Strikeouts') return
+      const facing = hit.team === away ? game.mlb!.probables.home : game.mlb!.probables.away
+      if (!facing) return
+      hitterMatchups.set(name, await loadHitterMatchup(history.playerId, facing.id, facing.name, year).catch(() => null))
+    })
+  }
+
   const cards: BetCardData[] = []
   for (const o of offers) {
     const hit = roster.get(slugify(o.player))
@@ -299,7 +328,7 @@ export async function buildRecommended(sport: Sport, gameId: string, away: strin
         opponent,
         homeAway: team === home ? 'home' : team === away ? 'away' : undefined,
       }
-      const result = category ? evaluateWithContext(outcome, game, history) : evaluateWithContext({ ...outcome, category: undefined }, game, null)
+      const result = category ? evaluateWithContext(outcome, game, history, { hitterMatchup: hitterMatchups.get(o.player) ?? null }) : evaluateWithContext({ ...outcome, category: undefined }, game, null)
       const id = mk(sport, gameId, matchup, 'Player Prop', `${o.market}:${o.player}:${o.line}:${side === 'over' ? 'O' : 'U'}`, '', '', 0, 0, '').id
       cards.push(card({ id, section: 'prop', market: o.marketLabel, description, odds: s.price, book: s.book, estimated: false, implied, sport, gameId, matchup, typeLabel: 'Player Prop', player: { name: o.player, team, position } }, result))
     }
@@ -346,13 +375,15 @@ export async function buildRecommended(sport: Sport, gameId: string, away: strin
     propsNote,
     firstHalfNote: FIRST_HALF_NOTE[sport],
     priorSeasonOnly: game.priorSeasonOnly,
+    season,
+    seasonNote,
     unavailable: false,
   }
 }
 
 /** Recommended Bets for a game, cached an hour per game (the same odds cache the parlay builder reads). Never throws. */
 export async function getRecommendedBets(sport: Sport, gameId: string, away: string, home: string, mode: PropsMode = 'live'): Promise<RecommendedBets> {
-  const empty: RecommendedBets = { sport, gameId, matchup: `${away} @ ${home}`, generatedAt: new Date().toISOString(), oddsSource: 'estimated', note: null, gameLines: [], props: [], propsNote: null, firstHalfNote: FIRST_HALF_NOTE[sport], priorSeasonOnly: false, unavailable: true }
+  const empty: RecommendedBets = { sport, gameId, matchup: `${away} @ ${home}`, generatedAt: new Date().toISOString(), oddsSource: 'estimated', note: null, gameLines: [], props: [], propsNote: null, firstHalfNote: FIRST_HALF_NOTE[sport], priorSeasonOnly: false, season: { isPreseason: false, isPlayoffs: false, isRegularSeason: true, isEarlySeason: false }, seasonNote: null, unavailable: true }
   try {
     const r = await cached(`edges:rec:${mode}:${sport}:${gameId}`, 3600, () => buildRecommended(sport, gameId, away, home, undefined, mode))
     return r ?? empty

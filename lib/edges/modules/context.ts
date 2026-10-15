@@ -1,4 +1,5 @@
 import type { Edge, ModuleOutput } from '../types'
+import { q } from '../evidenceFramework'
 import { avg, type ModuleInput } from './shared'
 
 const W_PACE = 0.08
@@ -36,6 +37,7 @@ export function contextModule({ outcome: o, game }: ModuleInput): ModuleOutput {
           supportingData: `${game.away} ${avg(a).toFixed(1)}, ${game.home} ${avg(h).toFixed(1)} per game`,
           weight: W_PACE,
           sample: Math.min(a.length, h.length),
+          quality: q(2, 2, 2, 2),
         })
       } else if ((over && gap <= -PACE_GAP) || (!over && gap >= PACE_GAP)) conflicts++
     }

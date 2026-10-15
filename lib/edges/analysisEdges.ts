@@ -4,7 +4,7 @@ import type { EdgeCategory } from './types'
 export { ANALYSIS_CATEGORIES } from './analysisCategories'
 import { getRecommendedBets, type BetCardData } from './recommended'
 
-const ICON: Record<EdgeCategory, string> = { recent_form: '📈', hit_rate: '🎯', matchup: '🏈', situational: '⚠️', h2h: '🔄', context: '📊' }
+const ICON: Record<EdgeCategory, string> = { recent_form: '📈', hit_rate: '🎯', matchup: '🏈', situational: '⚠️', h2h: '🔄', context: '📊', role: '🧭' }
 
 /** Bet-market label the Analysis filter pills use. */
 export function analysisLabel(b: BetCardData): string {
@@ -22,7 +22,7 @@ function toLegacy(b: BetCardData, id: number, away: string, home: string): Legac
     team,
     type: analysisLabel(b).toLowerCase(),
     typeLabel: analysisLabel(b),
-    grade: b.grade ?? 'C',
+    grade: (b.grade === 'A' || b.grade === 'B' ? b.grade : 'C') as 'A' | 'B' | 'C',
     conf,
     supporting: b.insights.length,
     line: `${b.odds !== null ? `${b.odds > 0 ? '+' : ''}${b.odds} ${b.book ?? ''}`.trim() : 'Estimated line'}${b.historicalHitRate !== null ? ` · ${Math.round(b.historicalHitRate)}% historical` : ''}`,
@@ -42,7 +42,7 @@ function toLegacy(b: BetCardData, id: number, away: string, home: string): Legac
  */
 export async function getAnalysisEdges(sport: Sport, gameId: string, away: string, home: string): Promise<LegacyEdge[]> {
   const rec = await getRecommendedBets(sport, gameId, away, home, 'cached')
-  const graded = [...rec.gameLines, ...rec.props.flatMap((g) => g.players.flatMap((p) => p.bets))].filter((b) => b.grade).sort((a, b) => b.convictionScore - a.convictionScore)
+  const graded = [...rec.gameLines, ...rec.props.flatMap((g) => g.players.flatMap((p) => p.bets))].filter((b) => b.grade && ['A', 'B', 'C'].includes(b.grade)).sort((a, b) => b.convictionScore - a.convictionScore)
   const seen = new Set<string>()
   const picked: BetCardData[] = []
   for (const b of graded) {

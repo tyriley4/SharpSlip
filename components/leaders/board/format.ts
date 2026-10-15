@@ -31,7 +31,7 @@ export function bettingDisplay(row: BoardRow, mode: BettingSort): BettingDisplay
     return { value: `${wins}-${losses}`, color: WHITE, secondary: `${hitRate}% hit rate` }
   }
   if (mode === 'Conviction Score') {
-    const color = row.grade === 'A' ? GREEN : row.grade === 'B' ? '#3B9EFF' : row.grade === 'C' ? '#FFB800' : '#8B909A'
+    const color = row.grade === 'A' ? GREEN : row.grade === 'B' ? '#3B9EFF' : row.grade === 'C' ? '#FFB800' : row.grade === 'D' ? '#FF6B35' : '#4B5058'
     return { value: row.grade ?? '—', color, secondary: row.grade ? `${hitRate}% hit rate · ${wins}-${losses}` : row.convictionNote ?? `${hitRate}% hit rate · not graded` }
   }
   if (mode === 'Most Profitable') {

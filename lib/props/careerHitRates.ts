@@ -7,6 +7,8 @@ export interface CareerGame {
   /** Venue and opponent of the game, when the source gives them (used by the edge engine for splits and head-to-head). */
   home?: boolean
   opp?: string
+  /** Team the player played for in that game (when the source says) - drives new-team detection. */
+  team?: string
   /** Per-game value of every prop category the player's sport offers, keyed by the category label. */
   values: Record<string, number>
 }

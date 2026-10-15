@@ -79,6 +79,7 @@ export function RealGameBreakdownClient({ backHref, breakdown }: { backHref: str
       tabs={tabs}
       activeTab={tab}
       onChangeTab={setTab}
+      season={breakdown.season}
     >
       {tab === 'Live' && matchup.status === 'Live' && (
         <RealLiveTab gamePk={matchup.gamePk} awayAbbr={matchup.away.abbr} homeAbbr={matchup.home.abbr} />

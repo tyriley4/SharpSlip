@@ -59,6 +59,7 @@ export function RealNHLGameBreakdownClient({ backHref, data }: { backHref: strin
       tabs={TABS}
       activeTab={tab}
       onChangeTab={setTab}
+      season={data.season}
     >
       {tab === 'Analysis' && (
         <AnalysisContent

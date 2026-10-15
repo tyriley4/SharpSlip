@@ -15,6 +15,8 @@ import {
 } from './api'
 import { NHL_TEAM_NAMES, nhlAbbrFromTeamId } from './divisions'
 import { getAnalysisEdges } from '@/lib/edges/analysisEdges'
+import { detectGameContext } from '@/lib/edges/seasonContext'
+import type { SeasonContext } from '@/lib/edges/types'
 // ---------------------------------------------------------------------------
 // Matchup
 // ---------------------------------------------------------------------------
@@ -167,6 +169,7 @@ export interface NHLAnalysisData {
   awayTopSkaters: NHLTopSkater[]
   homeTopSkaters: NHLTopSkater[]
   edges: Edge[]
+  season: SeasonContext
   contextStats: { label: string; val: string; good: boolean }[]
 }
 
@@ -210,7 +213,8 @@ export async function getNHLAnalysisData(gameId: string): Promise<NHLAnalysisDat
   const awayStanding = findStanding(standings, matchup.away.abbr)
   const homeStanding = findStanding(standings, matchup.home.abbr)
 
-  const edges = await getAnalysisEdges('nhl', matchup.gameId, matchup.away.abbr, matchup.home.abbr)
+  const season = await detectGameContext({ sport: 'nhl', gameId: matchup.gameId, startTime: null })
+  const edges = season.isPreseason ? [] : await getAnalysisEdges('nhl', matchup.gameId, matchup.away.abbr, matchup.home.abbr)
 
   const contextStats = [
     awayStanding ? { label: `${matchup.away.abbr} Record`, val: `${awayStanding.wins}-${awayStanding.losses}-${awayStanding.otLosses}`, good: awayStanding.points >= 0 } : null,
@@ -219,7 +223,7 @@ export async function getNHLAnalysisData(gameId: string): Promise<NHLAnalysisDat
     homeStats ? { label: `${matchup.home.abbr} GPG`, val: homeStats.goalsForPerGame.toFixed(1), good: homeStats.goalsForPerGame >= 3.2 } : null,
   ].filter((s): s is { label: string; val: string; good: boolean } => s !== null)
 
-  return { matchup, awayGoalie, homeGoalie, awayTopSkaters, homeTopSkaters, edges, contextStats }
+  return { matchup, awayGoalie, homeGoalie, awayTopSkaters, homeTopSkaters, edges, season, contextStats }
 }
 
 export { nhlAbbrFromTeamId }

@@ -141,6 +141,7 @@ export function RealCBBGameBreakdownClient({ backHref, data }: { backHref: strin
       tabs={tabs}
       activeTab={tab}
       onChangeTab={setTab}
+      season={data.season}
     >
       {tab === 'Live' && matchup.status === 'Live' && <RealNFLLiveTab awayAbbr={a} homeAbbr={h} url={`${API}/live?gameId=${encodeURIComponent(gid)}`} />}
       {tab === 'Analysis' && <AnalysisContent edges={edges} categories={EDGE_CATEGORIES} teamColors={teamColors} sport="cbb" matchupOverview={<Overview data={data} />} />}
