@@ -1,10 +1,14 @@
 import type { HitterMatchup } from '../data/mlbMatchup'
+import type { Synthesis } from '../teamSynthesis'
 import { sampleScale } from '../evidenceFramework'
+import { playerSeasonWeight, stageSeasonWeight } from '../historicalRates'
 import type { BettingOutcome, Edge, GameContext, PlayerGameRecord, PlayerHistory, TeamGameRecord } from '../types'
 
 /** Extra per-outcome facts loaded ahead of time (async data the pure modules cannot fetch). */
 export interface ModuleExtras {
   hitterMatchup?: HitterMatchup | null
+  /** Clusters of grade A/B player edges, for the team and total outcomes of the same game. */
+  synthesis?: Synthesis
 }
 
 export interface ModuleInput {
@@ -26,6 +30,12 @@ export function scriptOf(game: GameContext, team: string | undefined): { margin:
   if (team === game.home && homePoint !== null) margin = -homePoint
   else if (team === game.away && awayPoint !== null) margin = -awayPoint
   return { margin, total: odds?.total.line ?? null }
+}
+
+/** Season weights for a player's multi-season rates: by career stage when it is known, otherwise the standard weights. */
+export function seasonWeightFn(history: PlayerHistory | null): (seasonsAgo: number) => number {
+  const stage = history?.stage?.stage
+  return stage ? (n: number) => stageSeasonWeight(stage, n) : playerSeasonWeight
 }
 
 export const clamp01 = (x: number) => Math.max(0, Math.min(1, x))

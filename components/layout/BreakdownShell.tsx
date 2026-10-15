@@ -4,7 +4,7 @@ import { TrackOnMount } from '@/components/analytics/TrackOnMount'
 import { ProfileButton } from '@/components/layout/ProfileButton'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TeamLink } from '@/components/teams/TeamLink'
-import { PLAYOFF_BANNER, PRESEASON_ANALYSIS_NOTE } from '@/lib/edges/seasonText'
+import { NBA_ANALYSIS_NOTE, PLAYOFF_BANNER, PRESEASON_ANALYSIS_NOTE } from '@/lib/edges/seasonText'
 import type { SeasonContext } from '@/lib/edges/types'
 import type { Sport } from '@/lib/sport/SportContext'
 
@@ -136,6 +136,7 @@ export function BreakdownShell({
               <div className="text-2xl">🧪</div>
               <div className="mt-2 text-sm font-extrabold text-text">Preseason Game</div>
               <p className="mx-auto mt-1 max-w-[420px] text-xs leading-relaxed text-muted">{PRESEASON_ANALYSIS_NOTE}</p>
+              {sport === 'nba' && <p className="mx-auto mt-1 max-w-[420px] text-xs font-semibold leading-relaxed text-text2">{NBA_ANALYSIS_NOTE}</p>}
             </div>
           ) : (
             <>

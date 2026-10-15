@@ -3,6 +3,7 @@ import { nflCareerSeasons } from '@/lib/career/seasons'
 import { getNFLSchedule, getNFLStatsSeason, getNFLWeeklyPlayerStats, getNFLWeeklyPlayerStatsExact } from './api'
 import { nflGameStat, type NflBettingSub } from './bettingCategories'
 import { normalizeNflAbbr } from './divisions'
+import { isRollingWindow, takeLastGames } from '@/lib/leaders/lastGames'
 import { gameMatchesFilters, type NFLGameContext, type NFLLeaderFilters } from './filters'
 
 type Row = Record<string, string>
@@ -57,17 +58,28 @@ export async function loadNflPlayerGames(sub: NflBettingSub, season: number, car
 
   const dateByGame = new Map<string, string>()
   const allGames = career ? await Promise.all(nflCareerSeasons(statsSeason).map((s) => getNFLSchedule(s))) : [schedule]
-  for (const list of allGames) for (const g of list ?? []) dateByGame.set(g.game_id, g.gameday)
+  // ESPN-built weekly rows (the current season) carry no game_id, so games are also found by season, week and team.
+  const gameByTeamWeek = new Map<string, { gameday: string; home: string }>()
+  for (const list of allGames)
+    for (const g of list ?? []) {
+      dateByGame.set(g.game_id, g.gameday)
+      if (g.game_type !== 'REG') continue
+      const home = normalizeNflAbbr(g.home_team)
+      const info = { gameday: g.gameday, home }
+      gameByTeamWeek.set(`${g.season}|${g.week}|${home}`, info)
+      gameByTeamWeek.set(`${g.season}|${g.week}|${normalizeNflAbbr(g.away_team)}`, info)
+    }
 
   const byPlayer = new Map<string, { name: string; games: PlayerGame[] }>()
   for (const r of weekly) {
     if (r.position !== sub) continue
     const team = normalizeNflAbbr(r.team || r.recent_team)
     const entry = byPlayer.get(r.player_id) ?? { name: r.player_display_name || r.player_name, games: [] }
+    const sched = gameByTeamWeek.get(`${r.season}|${r.week}|${team}`)
     entry.games.push({
-      date: dateByGame.get(r.game_id) ?? '',
+      date: (r.game_id ? dateByGame.get(r.game_id) : undefined) ?? sched?.gameday ?? '',
       opponent: normalizeNflAbbr(r.opponent_team),
-      isHome: homeFromGameId(r.game_id) === team,
+      isHome: r.game_id ? homeFromGameId(r.game_id) === team : sched?.home === team,
       // season*100 + week keeps games in order across seasons.
       week: n(r.season) * 100 + n(r.week),
       row: r,
@@ -102,10 +114,15 @@ export async function getNflBettingLeaders(
   const players = await loadNflPlayerGames(sub, season, filters.window === 'Career')
   const out: Omit<BettingLeaderRow, 'rank'>[] = []
   players.forEach((p) => {
-    const filtered = p.games.filter((g) => gameMatchesFilters(g, filters)).sort((a, b) => b.week - a.week)
+    const filtered = takeLastGames(p.games.filter((g) => gameMatchesFilters(g, filters)), filters.window, (g) => g.date || g.week).sort((a, b) => b.week - a.week)
     if (filtered.length === 0) return
 
     const hits = filtered.map((g) => nflGameStat(g.row, category) >= threshold)
+    let seasonHitRate: number | undefined
+    if (isRollingWindow(filters.window)) {
+      const season = p.games.filter((g) => gameMatchesFilters(g, { ...filters, window: 'Season' }))
+      if (season.length > 0) seasonHitRate = Math.round((season.filter((g) => nflGameStat(g.row, category) >= threshold).length / season.length) * 1000) / 10
+    }
     const wins = hits.filter(Boolean).length
     out.push({
       name: p.name,
@@ -115,6 +132,7 @@ export async function getNflBettingLeaders(
       losses: filtered.length - wins,
       gamesPlayed: filtered.length,
       last5: hits.slice(0, 5),
+      seasonHitRate,
     })
   })
 

@@ -47,6 +47,19 @@ async function mlb(q: CareerQuery, count: number): Promise<CareerGame[]> {
   const year = new Date().getFullYear()
   const years = Array.from({ length: count }, (_, i) => year - i)
   const [logs, teams] = await Promise.all([Promise.all(years.map((y) => getMlbGameLog(Number(q.playerId), group, y).catch(() => null))), getMlbTeamsIndex().catch(() => null)])
+  // The postseason log for the current year (the league feed keeps it apart from the regular season).
+  let post: typeof logs[number] = null
+  try {
+    const res = await fetch(`https://statsapi.mlb.com/api/v1/people/${q.playerId}/stats?stats=gameLog&group=${group}&season=${year}&gameType=P`, { next: { revalidate: 3600 } })
+    if (res.ok) {
+      const d = (await res.json()) as { stats?: { splits?: { date: string; isHome: boolean; isWin: boolean; opponent: { id: number; abbreviation?: string }; team?: { id: number; abbreviation?: string }; stat: Record<string, string | number> }[] }[] }
+      post = (d.stats?.[0]?.splits ?? []) as unknown as typeof logs[number]
+    }
+  } catch {
+    /* postseason log unavailable: the regular season still stands */
+  }
+  if (post && logs[0]) logs[0] = [...logs[0], ...post]
+  else if (post) logs[0] = post
   const out: CareerGame[] = []
   logs.forEach((log, i) => {
     for (const g of log ?? []) {

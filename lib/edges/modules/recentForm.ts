@@ -1,12 +1,12 @@
 import { daysSince } from '../historicalRates'
 import { q } from '../evidenceFramework'
+import { minimumsFor } from '../minimums'
 import type { Edge, ModuleOutput, TeamGameRecord } from '../types'
 import { avg, fmtPct, lineNoun, outcomeNoun, playerHit, subjectTeam, teamEvidenceGames, teamHit, type ModuleInput } from './shared'
 
 const W_STREAK = 0.2
 const W_TREND = 0.14
 const W_WINDOW = 0.16
-const W_AVERAGE = 0.14
 
 /** Evidence older than this is not described as current form. */
 const CURRENT_WINDOW_DAYS = 14
@@ -64,7 +64,9 @@ export function recentFormModule({ outcome: o, game, history }: ModuleInput): Mo
     }
 
     // Hit rate over the last 5, 7 or 10 games at this exact threshold.
-    const windowed = [10, 7, 5]
+    // Pitcher strikeout windows come from the starter evidence (with innings) when the MLB facts loaded.
+    const skipWindows = game.sport === 'mlb' && cat === 'Strikeouts' && !!game.facts.mlb
+    const windowed = skipWindows ? undefined : [10, 7, 5, 4]
       .filter((n) => games.length >= n)
       .map((n) => {
         const res = games.slice(0, n).map((g) => playerHit(o, g))
@@ -72,7 +74,7 @@ export function recentFormModule({ outcome: o, game, history }: ModuleInput): Mo
         const played = res.filter((x) => x !== null).length
         return { n: played, k }
       })
-      .filter((w) => w.n >= 5 && w.k / w.n >= 0.7 && w.k < w.n && !(streak >= 3 && w.k - streak <= 1 && w.k === streak))
+      .filter((w) => ((w.n >= 5 && w.k / w.n >= 0.6) || (w.n === 4 && w.k / w.n >= 0.75)) && w.k < w.n && !(streak >= 3 && w.k - streak <= 1 && w.k === streak))
       .sort((a, b) => b.k / b.n - a.k / a.n || b.n - a.n)[0]
     if (windowed) {
       edges.push({
@@ -84,6 +86,7 @@ export function recentFormModule({ outcome: o, game, history }: ModuleInput): Mo
         ageDays: age,
         quality: q(3, 2, 3, windowed.n >= 7 ? 1 : 0),
         sample: windowed.n,
+        metrics: { rate: windowed.k / windowed.n, n: windowed.n },
       })
     }
 
@@ -110,27 +113,7 @@ export function recentFormModule({ outcome: o, game, history }: ModuleInput): Mo
       } else if ((o.direction !== 'under' && ratio <= 0.8) || (o.direction === 'under' && ratio >= 1.2)) conflicts++
     }
 
-    // An average over a longer recent stretch, set against the line (with minutes when the sport tracks them).
-    const stretch = vals(games.slice(0, 15))
-    if (stretch.length >= 12) {
-      const a = avg(stretch)
-      const margin = (a - o.threshold) / Math.max(o.threshold, 1)
-      const over = o.direction !== 'under'
-      if ((over && margin >= 0.12) || (!over && margin <= -0.12)) {
-        const mins = games.slice(0, 15).map((g) => g.values.Minutes ?? g.values.TOI).filter((v): v is number => typeof v === 'number')
-        const withMins = mins.length >= 10 ? ` on ${avg(mins).toFixed(1)} minutes per game` : ''
-        edges.push({
-          description: `Averaging ${a.toFixed(1)} ${cat} over the last ${stretch.length} games${withMins}, ${over ? 'above' : 'below'} the line of ${o.threshold}`,
-          category: 'recent_form',
-          relevanceScore: Math.min(1, 0.45 + Math.abs(margin) * 1.5),
-          supportingData: `${Math.abs(Math.round(margin * 100))}% ${over ? 'over' : 'under'} the line on average`,
-          weight: W_AVERAGE,
-          ageDays: age,
-          quality: q(3, 2, 3, 2),
-          sample: stretch.length,
-        })
-      } else if ((over && margin <= -0.12) || (!over && margin >= 0.12)) conflicts++
-    }
+    // The longer 15/30-game averages against the line are built in the horizons module.
     const l5hit = games.slice(0, 5).map((g) => playerHit(o, g)).filter((x) => x !== null) as boolean[]
     if (l5hit.length === 5 && l5hit.every((x) => !x)) conflicts++
     return { edges, conflicts }
@@ -169,14 +152,15 @@ export function recentFormModule({ outcome: o, game, history }: ModuleInput): Mo
   const team = subjectTeam(o)
   const cur = all.length ? all.filter((g) => g.season === all[0].season) : []
   if (!team) return { edges, conflicts }
-  const windowSize = cur.length >= 10 ? 10 : 5
+  const mins = minimumsFor(game)
+  const windowSize = cur.length >= 10 ? 10 : Math.min(5, cur.length)
   const lastN = cur.slice(0, windowSize)
-  if (lastN.length < 5) return { edges, conflicts }
+  if (lastN.length < Math.min(5, mins.recentForm)) return { edges, conflicts }
   const age = daysSince(lastN[0].date)
   if (age > CURRENT_WINDOW_DAYS) return { edges, conflicts }
   const hits = lastN.map((g) => teamHit(o, g))
   const nHit = hits.filter((x) => x === true).length
-  const need = windowSize === 10 ? 7 : 4
+  const need = windowSize === 10 ? 7 : windowSize >= 5 ? 4 : windowSize === 4 ? 3 : windowSize
   if (nHit >= need) {
     edges.push({
       description: `${team} ${o.type === 'moneyline' ? 'has won' : 'would have beaten the ' + lineNoun(o) + ' number in'} ${nHit} of its last ${lastN.length} games${teamContext(lastN, hits, game.leagueWinPct, o.team?.opponent, o.team?.home)}`,
@@ -187,7 +171,8 @@ export function recentFormModule({ outcome: o, game, history }: ModuleInput): Mo
       ageDays: age,
       quality: q(2, 2, 3, windowSize === 10 ? 1 : 0),
       sample: lastN.length,
+      smallSample: lastN.length < 5 ? lastN.length : undefined,
     })
-  } else if (nHit <= (windowSize === 10 ? 3 : 1)) conflicts++
+  } else if (nHit <= (windowSize === 10 ? 3 : windowSize >= 5 ? 1 : 0)) conflicts++
   return { edges, conflicts }
 }

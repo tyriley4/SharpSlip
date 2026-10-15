@@ -1,6 +1,6 @@
 import { PlayerLink } from '@/components/players/PlayerLink'
 import { TeamLink } from '@/components/teams/TeamLink'
-import { bettingDisplay, isDimmed, isSelected, rowKey, WHITE } from './format'
+import { bettingDisplay, isDimmed, isSelected, rowKey, seasonCompare, WHITE } from './format'
 import { BestValueBadge } from './LeaderRows'
 import { RANK_STYLES, readableTeamColor } from './theme'
 import type { BoardContext, BoardRow } from './types'
@@ -67,6 +67,17 @@ function SpotlightCard({ row, index, ctx }: { row: BoardRow; index: number; ctx:
         </div>
         <div className="mt-1 text-[10px] font-semibold text-muted">{ctx.betting ? ctx.thresholdLabel ?? ctx.statLabel : ctx.statLabel}</div>
         {bet && <div className="text-[10px] text-text2">{bet.secondary}</div>}
+        {ctx.betting && (() => {
+          const c = seasonCompare(row)
+          return c ? (
+            <div className="text-[9px] leading-tight text-muted">
+              {c.text}
+              {c.flag && <span className={`ml-1 font-bold ${c.flag === 'hot' ? 'text-positive' : 'text-negative'}`}>{c.flag === 'hot' ? '↑ running hot' : '↓ running cold'} {c.delta > 0 ? '+' : ''}{c.delta}</span>}
+            </div>
+          ) : null
+        })()}
+        {ctx.betting && row.convictionNote === 'No game today — season hit rate shown' && <div className="text-[9px] text-muted">{row.convictionNote}</div>}
+        {ctx.betting && row.grade && ctx.sortMode !== 'Conviction Score' && <div className="text-[9px] font-bold text-accent">Tonight&apos;s conviction: {row.grade}</div>}
         {row.last5 && row.last5.length > 0 && (
           <div className="mt-1.5">
             <Dots last5={row.last5} color={tc} />

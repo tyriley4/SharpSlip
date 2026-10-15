@@ -6,6 +6,7 @@ import { ANALYSIS_CATEGORIES } from '@/lib/edges/analysisCategories'
 import { RecommendedBetsTab } from '@/components/breakdown/RecommendedBetsTab'
 import { RealNFLDefenseTab } from '@/components/breakdown/real-nfl/RealNFLDefenseTab'
 import { RealNFLLiveTab } from '@/components/breakdown/real-nfl/RealNFLLiveTab'
+import { lensLabel, NflLensBar, NflLensPanel, type NflLens } from '@/components/breakdown/real-nfl/NflWindowLens'
 import { RealNFLMatchupOverview } from '@/components/breakdown/real-nfl/RealNFLMatchupOverview'
 import { RealNFLPassingTab } from '@/components/breakdown/real-nfl/RealNFLPassingTab'
 import { RealNFLReceivingTab } from '@/components/breakdown/real-nfl/RealNFLReceivingTab'
@@ -43,6 +44,8 @@ function formatKickoff(gameday: string, gametime: string): string {
 export function RealNFLGameBreakdownClient({ backHref, data }: { backHref: string; data: NFLAnalysisData }) {
   const { matchup, awayQB, homeQB, edges, contextStats } = data
   const [tab, setTab] = useState(matchup.status === 'Live' ? 'Live' : 'Analysis')
+  const [lens, setLens] = useState<NflLens>('season')
+  const lensTab = ({ Passing: 'passing', Rushing: 'rushing', Receiving: 'receiving', Defense: 'defense' } as const)[tab as 'Passing']
 
 
   const tabs = matchup.status === 'Live' ? [LIVE_TAB, ...BASE_TABS] : BASE_TABS
@@ -82,6 +85,19 @@ export function RealNFLGameBreakdownClient({ backHref, data }: { backHref: strin
       )}
 
       {tab === 'Live' && matchup.status === 'Live' && <RealNFLLiveTab awayAbbr={matchup.away.abbr} homeAbbr={matchup.home.abbr} />}
+
+      {lensTab && (
+        <>
+          <NflLensBar lens={lens} onChange={setLens} />
+          <NflLensPanel gameId={matchup.gameId} tab={lensTab} lens={lens} />
+        </>
+      )}
+
+      {tab === 'Analysis' && lens !== 'season' && (
+        <p className="mx-3.5 mt-3 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-[11px] text-text2 md:mx-8">
+          Viewing matchup through {lensLabel(lens)} lens. The Passing, Rushing, Receiving and Defense tabs show that window; the edge grades below still blend the full season with recent form.
+        </p>
+      )}
 
       {tab === 'Analysis' && (
         <AnalysisContent

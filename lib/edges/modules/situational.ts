@@ -36,7 +36,9 @@ export function situationalModule({ outcome: o, game }: ModuleInput): ModuleOutp
     const opp = o.opponent
     const positions = affectingPositions(game.sport, o.category)
     if (opp && positions.length && over) {
-      const out = game.injuries.filter((i) => i.team === opp && OUT_NOW.has(i.designation) && positions.includes(i.position.toUpperCase()))
+      const depthLoaded = game.sport === 'nfl' && !!game.facts.nfl?.depth[opp]
+      const secondary = ['CB', 'S', 'FS', 'SS', 'DB']
+      const out = game.injuries.filter((i) => i.team === opp && OUT_NOW.has(i.designation) && positions.includes(i.position.toUpperCase()) && !(depthLoaded && secondary.includes(i.position.toUpperCase())))
       if (out.length > 0) {
         edges.push({
           description: `${opp} ${out.length === 1 ? 'is' : 'are'} missing ${out.map((i) => `${i.player} (${i.position}, ${i.designation === 'doubtful' ? 'doubtful' : 'out'})`).join(', ')} — a position that bears directly on ${o.category}`,
@@ -72,11 +74,11 @@ export function situationalModule({ outcome: o, game }: ModuleInput): ModuleOutp
     if (football && (passing || isTotal)) {
       const bits: string[] = []
       let severity = 0
-      if (w.windMph !== null && w.windMph > 10) {
+      if (w.windMph !== null && w.windMph > 15) {
         bits.push(`${Math.round(w.windMph)} mph wind`)
-        severity += Math.min(1, (w.windMph - 10) / 15)
+        severity += Math.min(1, (w.windMph - 15) / 15)
       }
-      if (w.tempF !== null && w.tempF < 40 && isTotal) {
+      if (w.tempF !== null && w.tempF < 32 && isTotal) {
         bits.push(`${Math.round(w.tempF)}F`)
         severity += 0.5
       }

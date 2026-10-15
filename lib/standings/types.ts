@@ -29,6 +29,10 @@ export interface StandingsRow {
   home: string
   away: string
   last10: string
+  /** W-L over the last five games, when the source's results allow it (NFL). */
+  last5?: string
+  /** Against the spread over the last five games with a closing line (NFL). */
+  atsLast5?: string | null
   /** Normalised streak, e.g. "W3", "L4", "OTL1" — "" when unknown. */
   streak: string
   /** Extra stat columns shown on tablet/desktop (e.g. run differential). */

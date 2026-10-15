@@ -1,3 +1,4 @@
+import { takeLastGames } from '@/lib/leaders/lastGames'
 import type { LeaderRow } from '@/data/leaders/types'
 import { isCareer, nbaLog, nhlLog } from '@/lib/career/logs'
 import { getAllNBAPlayerSeasonStats } from '@/lib/nba/api'
@@ -59,7 +60,7 @@ export async function getWindowedGameLeaders(sport: Exclude<Sport, 'mlb'>, sub: 
     const filters = { ...DEFAULT_NFL_FILTERS, window: window as NflWindow }
     const entries: Entry[] = []
     for (const p of players) {
-      const games = p.games.filter((g) => nflMatches(g, filters))
+      const games = takeLastGames(p.games.filter((g) => nflMatches(g, filters)), window, (g) => g.date || g.week)
       if (games.length === 0) continue
       const v = nflStat(sub, category, games)
       if (v === null) return []
@@ -76,7 +77,7 @@ export async function getWindowedGameLeaders(sport: Exclude<Sport, 'mlb'>, sub: 
     const filters = { ...DEFAULT_NBA_FILTERS, window: window as NbaWindow }
     const rows = await mapWithConcurrency(pool, 6, async (p) => {
       const log = await nbaLog(p.playerId, NBA_CURRENT_SEASON, career)
-      const games = (log ?? []).filter((g) => nbaMatches(g, filters))
+      const games = takeLastGames((log ?? []).filter((g) => nbaMatches(g, filters)), window, (g) => g.gameDate)
       if (games.length === 0) return null
       const v = nbaStat(category, games)
       return v === null ? null : { name: p.name, team: p.teamAbbr, value: v, display: round1(v) }
@@ -95,7 +96,7 @@ export async function getWindowedGameLeaders(sport: Exclude<Sport, 'mlb'>, sub: 
     6,
     async (p) => {
       const log = await nhlLog(p.playerId, career)
-      const games = (log ?? []).filter((g) => nhlMatches(g, filters) && (!goalie || g.decision !== null))
+      const games = takeLastGames((log ?? []).filter((g) => nhlMatches(g, filters) && (!goalie || g.decision !== null)), window, (g) => g.gameDate)
       if (games.length === 0) return null
       const v = goalie ? nhlGoalieStat(category, games) : nhlSkaterStat(category, games)
       return v === null ? null : { name: p.name, team: p.teamAbbr, value: v, display: nhlDisplay(goalie, category, v) }

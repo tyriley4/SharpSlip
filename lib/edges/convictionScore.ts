@@ -1,4 +1,6 @@
 import { MIN_QUALITY, qualityOf, recencyWeight, seasonWeightMultiplier, MAX_QUALITY } from './evidenceFramework'
+import { horizonGroup, horizonOf } from './horizon'
+import { phaseMultiplier } from './historicalRates'
 import { PLAYOFF_WEIGHTS } from './seasonContext'
 import type { Edge, Grade, SeasonContext } from './types'
 
@@ -13,6 +15,8 @@ export interface ConvictionInput {
   /** Games behind the primary evidence. */
   sampleSize: number
   season: SeasonContext
+  /** Team synthesis: 1.20 when three grade A/B player edges cluster behind this outcome, 1.35 for four or more. */
+  synthesisMultiplier?: number
   /** Best grade this bet may earn (role changes: first game back, new team). */
   gradeCap?: { grade: Grade; note: string }
 }
@@ -48,7 +52,8 @@ const worse = (a: Grade, b: Grade): Grade => (ORDER.indexOf(a) <= ORDER.indexOf(
  */
 export function edgeContribution(e: Edge, season: SeasonContext): number {
   const quality = 0.6 + 0.4 * (qualityOf(e) / MAX_QUALITY)
-  return e.weight * e.relevanceScore * quality * recencyWeight(e) * (e.oppositionMultiplier ?? 1) * seasonWeightMultiplier(e, season)
+  const phase = phaseMultiplier(horizonGroup(horizonOf(e)), season.phase)
+  return e.weight * e.relevanceScore * quality * recencyWeight(e) * (e.oppositionMultiplier ?? 1) * seasonWeightMultiplier(e, season) * phase
 }
 
 /** Kept for the engine's ordering of insights: strongest first. */
@@ -98,6 +103,7 @@ export function scoreConviction(input: ConvictionInput): ConvictionOutput {
 
   let raw = Math.min(1, edges.reduce((s, e) => s + edgeContribution(e, season), 0))
   raw *= conflictPenalty(conflicts)
+  raw *= input.synthesisMultiplier ?? 1
   raw *= marketMultiplier(historicalRate, impliedProbability)
   raw *= heavyFavoritePenalty(impliedProbability)
   const convictionScore = Math.round(Math.min(1, raw) * 1000) / 1000

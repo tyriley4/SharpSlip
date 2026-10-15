@@ -44,6 +44,7 @@ export function columnsFor(data: SportStandings): StandingsColumn[] {
   cols.push(
     { key: 'home', label: 'HOME', tier: 'md', width: 56, value: (r) => r.home, prominent: prominent.includes('home') },
     { key: 'away', label: 'AWAY', tier: 'md', width: 56, value: (r) => r.away, prominent: prominent.includes('away') },
+    ...(data.rows.some((r) => r.last5) ? [{ key: 'l5', label: 'L5', tier: 'md' as const, width: 44, value: (r: StandingsRow) => r.last5 ?? '—' }] : []),
     { key: 'l10', label: 'L10', tier: 'md', width: 48, value: (r) => r.last10 },
     { key: 'streak', label: 'STREAK', tier: 'md', width: 58, value: (r) => r.streak, kind: 'streak' }
   )

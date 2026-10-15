@@ -224,7 +224,13 @@ export async function getPlayerPropsStatus(sport: Sport, gameId: string, teams?:
     if (!process.env.THE_ODDS_API_KEY) return { props: null, reason: 'no-key' }
     const board = await getOddsBoard(sport)
     const game = board && board.source === 'the-odds-api' ? matchGame(board.games, gameId, teams) : null
-    if (!game?.eventId) return { props: null, reason: 'not-posted' }
+    if (!game?.eventId) {
+      // Props come only from The Odds API. When it is skipped for low credits the board is another source, and the honest
+      // reason is the credit budget, not that the books have not posted them.
+      const credits = getCredits()
+      const paused = credits.exhausted || (credits.remaining !== null && credits.remaining < PROPS_CREDIT_FLOOR)
+      return { props: null, reason: paused ? 'budget' : 'not-posted' }
+    }
 
     // Only games within a day or so have props posted; don't burn credits on later ones.
     const start = game.commenceTime ? Date.parse(game.commenceTime) : NaN

@@ -20,9 +20,7 @@ export const LAYER_BY_CATEGORY: Record<EdgeCategory, EvidenceLayer> = {
 
 export const layerOf = (e: Edge): EvidenceLayer => e.layer ?? LAYER_BY_CATEGORY[e.category]
 
-/** Quality sub-scores are 0-3 each; the best possible item is 12 and nothing below this is shown. */
-export const MAX_QUALITY = 12
-export const MIN_QUALITY = 7
+export { MAX_QUALITY, MIN_QUALITY, qualityOf } from './qualityFilter'
 
 /** Recency weight from the spec: days for recent form, seasons for everything else. */
 export function recencyWeight(e: Pick<Edge, 'ageDays' | 'seasonsAgo'>): number {
@@ -32,28 +30,6 @@ export function recencyWeight(e: Pick<Edge, 'ageDays' | 'seasonsAgo'>): number {
   }
   const s = e.seasonsAgo ?? 0
   return s <= 0 ? 1.0 : s === 1 ? 0.85 : s === 2 ? 0.7 : 0.5
-}
-
-/** Recency sub-score (0-3) for the quality check. */
-function recencyScore(e: Edge): number {
-  if (e.ageDays !== undefined && e.ageDays !== null) {
-    if (e.ageDays <= 14) return 3
-    if (e.ageDays <= 45) return 2
-  }
-  const s = e.seasonsAgo ?? 0
-  return s <= 0 ? 2 : s === 1 ? 1 : 0
-}
-
-const sampleScore = (n: number | undefined) => (n === undefined ? 1 : n >= 30 ? 3 : n >= 15 ? 2 : n >= 8 ? 1 : n >= 3 ? 1 : 0)
-
-/** quality = specificity + causality + recency + sample size, each 0-3, 12 at most. */
-export function qualityOf(e: Edge): number {
-  const q = e.quality
-  const spec = q?.specificity ?? 2
-  const caus = q?.causality ?? 2
-  const rec = q?.recency ?? recencyScore(e)
-  const samp = q?.sample ?? sampleScore(e.sample)
-  return Math.max(0, Math.min(MAX_QUALITY, spec + caus + rec + samp))
 }
 
 /** Playoff weighting: team season trends fade, matchup-specific and recent-form evidence rise. */

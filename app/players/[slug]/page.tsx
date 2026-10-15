@@ -9,7 +9,10 @@ import { PlayerComingSoon } from '@/components/players/PlayerComingSoon'
 import { PlayerHeader } from '@/components/players/PlayerHeader'
 import { PropBettingRecord } from '@/components/players/PropBettingRecord'
 import { RecentFormTable } from '@/components/players/RecentFormTable'
-import { getPlayerConviction } from '@/lib/edges/playerEdge'
+import { CareerProvider } from '@/components/players/CareerCompare'
+import { PlayerResearch } from '@/components/players/PlayerResearch'
+import { TimeWindowProvider } from '@/components/research/TimeWindow'
+import { findTeamGame, getPlayerConviction } from '@/lib/edges/playerEdge'
 import { TonightEdgeCard } from '@/components/players/TonightEdgeCard'
 import { MLB_TEAM_COLORS } from '@/data/mlb/teamColors'
 import { NBA_TEAM_COLORS } from '@/data/nba/teamColors'
@@ -230,6 +233,8 @@ export default async function PlayerPage({
   }
 
   const convictionPlayer = { name: player.name, team: player.team }
+  const tonight = await findTeamGame(player.sport, player.team).catch(() => null)
+  const collegeGames = (cfb?.games ?? cbb?.games ?? null)?.map((g) => ({ season: 'current', date: g.date, opp: g.opp, home: g.home, values: Object.fromEntries(Object.entries(g.values).filter(([, v]) => typeof v === 'number')) as Record<string, number> }))
   const hasTonightEdge = Object.keys(player.tonight_edge ?? {}).length > 0
   const hasRecentForm = (player.recent_form ?? []).length > 0
   const hasPropRecords = bettingPlayerId !== null
@@ -242,10 +247,19 @@ export default async function PlayerPage({
 
   return (
     <AppShell>
+      <TimeWindowProvider sport={player.sport} team={player.team} opponent={tonight?.opponent ?? null}>
       <div className="flex flex-col gap-3 px-3.5 pt-1 md:gap-4 md:px-0 md:pt-0">
         <PlayerHeader player={player} teamColor={teamColor} />
 
         {hasTonightEdge && <TonightEdgeCard edge={player.tonight_edge} career={careerParams} />}
+
+        {careerParams ? (
+          <CareerProvider params={careerParams}>
+            <PlayerResearch sport={player.sport} name={player.name} team={player.team} tonight={tonight} />
+          </CareerProvider>
+        ) : collegeGames ? (
+          <PlayerResearch sport={player.sport} name={player.name} team={player.team} tonight={tonight} gamesOverride={collegeGames} />
+        ) : null}
 
         {cfb && <CfbSeasonStats stats={player.season_stats} games={cfb.games.length} />}
         {cbb && <CfbSeasonStats stats={player.season_stats} games={cbb.games.length} label={`${cbb.seasonLabel} SEASON`} />}
@@ -283,6 +297,7 @@ export default async function PlayerPage({
 
         {hasCareerVsTonight && <CareerVsTonight data={player.career_vs_opponents} />}
       </div>
+      </TimeWindowProvider>
     </AppShell>
   )
 }

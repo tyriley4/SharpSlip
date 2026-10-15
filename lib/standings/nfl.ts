@@ -29,12 +29,13 @@ interface Tally {
   ouU: number
   ouP: number
   results: Result[]
+  atsResults: ('W' | 'L' | 'P')[]
 }
 
 const blank = (): Tally => ({
   w: 0, l: 0, t: 0, homeW: 0, homeL: 0, homeT: 0, awayW: 0, awayL: 0, awayT: 0,
   divW: 0, divL: 0, divT: 0, confW: 0, confL: 0, confT: 0, pf: 0, pa: 0,
-  atsW: 0, atsL: 0, atsP: 0, ouO: 0, ouU: 0, ouP: 0, results: [],
+  atsW: 0, atsL: 0, atsP: 0, ouO: 0, ouU: 0, ouP: 0, results: [], atsResults: [],
 })
 
 const rec = (w: number, l: number, t: number) => (t > 0 ? `${w}-${l}-${t}` : `${w}-${l}`)
@@ -87,9 +88,9 @@ export function buildNflStandings(schedule: Record<string, string>[]): SportStan
     // nflverse spread_line: positive = home favored, so home covers when (margin − spread) > 0.
     if (g.spread_line !== '' && g.spread_line !== undefined) {
       const edge = hs - as - Number(g.spread_line)
-      if (edge > 0) { th.atsW++; ta.atsL++ }
-      else if (edge < 0) { th.atsL++; ta.atsW++ }
-      else { th.atsP++; ta.atsP++ }
+      if (edge > 0) { th.atsW++; ta.atsL++; th.atsResults.push('W'); ta.atsResults.push('L') }
+      else if (edge < 0) { th.atsL++; ta.atsW++; th.atsResults.push('L'); ta.atsResults.push('W') }
+      else { th.atsP++; ta.atsP++; th.atsResults.push('P'); ta.atsResults.push('P') }
     }
     if (g.total_line !== '' && g.total_line !== undefined) {
       const diff = hs + as - Number(g.total_line)
@@ -110,6 +111,12 @@ export function buildNflStandings(schedule: Record<string, string>[]): SportStan
     const l10l = last10.filter((r) => r === 'L').length
     const l10t = last10.length - l10w - l10l
     const hasAts = t.atsW + t.atsL + t.atsP > 0
+    const last5 = t.results.slice(-5)
+    const l5w = last5.filter((r) => r === 'W').length
+    const l5l = last5.filter((r) => r === 'L').length
+    const atsL5 = t.atsResults.slice(-5)
+    const a5w = atsL5.filter((r) => r === 'W').length
+    const a5l = atsL5.filter((r) => r === 'L').length
     const hasOu = t.ouO + t.ouU + t.ouP > 0
     rows.push({
       abbr,
@@ -129,6 +136,8 @@ export function buildNflStandings(schedule: Record<string, string>[]): SportStan
       home: rec(t.homeW, t.homeL, t.homeT),
       away: rec(t.awayW, t.awayL, t.awayT),
       last10: gp > 0 ? rec(l10w, l10l, l10t) : '—',
+      last5: gp > 0 ? rec(l5w, l5l, last5.length - l5w - l5l) : '—',
+      atsLast5: atsL5.length > 0 ? rec(a5w, a5l, atsL5.length - a5w - a5l) : null,
       streak: normalizeStreak(streakOf(t.results)),
       extras: [{ key: 'pd', label: 'PD', value: signed(t.pf - t.pa) }],
       subline: [

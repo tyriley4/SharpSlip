@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { PropConviction, usePlayerConviction, type ConvictionPlayer } from '@/components/players/PropConviction'
+import { WindowCompare } from '@/components/research/TimeWindow'
 import { CBB_BETTING_THRESHOLDS, formatCbbThreshold } from '@/lib/college/cbbProps'
 import { CFB_BETTING_THRESHOLDS, formatCfbThreshold } from '@/lib/college/cfbProps'
 import type { StatLine } from '@/lib/players/types'
@@ -50,6 +51,7 @@ export function CfbPropCalculator({ categories, games, color, league = 'cfb', ca
     [games, category, venue]
   )
   const t = thresholds.includes(threshold) ? threshold : thresholds[0]
+  const careerGames = useMemo(() => games.map((g) => ({ season: 'current', date: g.date, opp: g.opp, home: g.home, values: Object.fromEntries(Object.entries(g.values).filter(([, v]) => typeof v === 'number')) as Record<string, number> })), [games])
   const conviction = usePlayerConviction(player && thresholds.length > 0 ? { sport: league, name: player.name, team: player.team, category, thresholds } : null)
   const fmt = (n: number) => format(category, n)
   const hits = sample.filter((g) => (g.values[category] ?? 0) >= t).length
@@ -98,6 +100,10 @@ export function CfbPropCalculator({ categories, games, color, league = 'cfb', ca
             {v}
           </button>
         ))}
+      </div>
+
+      <div className="mt-3">
+        <WindowCompare games={careerGames} category={category} threshold={t} />
       </div>
 
       {player && (

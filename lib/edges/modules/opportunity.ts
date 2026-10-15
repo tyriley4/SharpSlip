@@ -91,8 +91,8 @@ export function opportunityModule({ outcome: o, game, extras }: ModuleInput): Mo
           edges.push({ description: `${m.platoon.homeRuns} home runs in ${m.platoon.atBats} at-bats against ${handWord} pitching this season; tonight's starter ${m.pitcher} throws ${m.hand === 'L' ? 'left' : 'right'}`, category: 'matchup', layer: 'opportunity', relevanceScore: 0.6, supportingData: 'Platoon split', weight: W_HITTER, quality: q(3, 3, 2, 2), sample: m.platoon.atBats })
         }
       }
-      // Career against this exact pitcher: at least eight plate appearances, or it is anecdote.
-      if (m.vs && m.vs.plateAppearances >= 8) {
+      // Career against this exact pitcher: at least five plate appearances, or it is anecdote.
+      if (m.vs && m.vs.plateAppearances >= 5) {
         const { hits, atBats, plateAppearances, homeRuns } = m.vs
         const text = `${hits}-for-${atBats} career against ${m.pitcher} (${plateAppearances} plate appearances${homeRuns ? `, ${homeRuns} HR` : ''})`
         if ((cat === 'Hits' || cat === 'Total Bases') && over && m.vs.avg >= 0.3) edges.push({ description: text, category: 'h2h', layer: 'statistical', relevanceScore: Math.min(1, 0.45 + (m.vs.avg - 0.28) * 2.5), supportingData: `${fmtAvg(m.vs.avg)} batting average in the matchup`, weight: 0.1, seasonsAgo: 1, quality: q(3, 3, 1, plateAppearances >= 20 ? 2 : 1), sample: plateAppearances })

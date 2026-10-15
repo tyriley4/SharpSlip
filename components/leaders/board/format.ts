@@ -32,7 +32,7 @@ export function bettingDisplay(row: BoardRow, mode: BettingSort): BettingDisplay
   }
   if (mode === 'Conviction Score') {
     const color = row.grade === 'A' ? GREEN : row.grade === 'B' ? '#3B9EFF' : row.grade === 'C' ? '#FFB800' : row.grade === 'D' ? '#FF6B35' : '#4B5058'
-    return { value: row.grade ?? '—', color, secondary: row.grade ? `${hitRate}% hit rate · ${wins}-${losses}` : row.convictionNote ?? `${hitRate}% hit rate · not graded` }
+    return { value: row.grade ?? '—', color, secondary: row.grade ? `Tonight's conviction: ${row.grade} · ${hitRate}% hit rate` : row.convictionNote ?? `${hitRate}% hit rate · not graded` }
   }
   if (mode === 'Most Profitable') {
     const profit = row.profit ?? 0
@@ -40,6 +40,17 @@ export function bettingDisplay(row: BoardRow, mode: BettingSort): BettingDisplay
     return { value: formatProfit(profit), color: profit >= 0 ? GREEN : RED, secondary: `(${games} games${priced})` }
   }
   return { value: `${hitRate}%`, color: hitRateTextColor(hitRate), secondary: `${wins}-${losses} (${games} games)` }
+}
+
+/** How far a window's hit rate must sit from the season's before it is flagged as a real shift. */
+export const DIVERGENCE_POINTS = 12
+
+/** "Season 58% · hot +18" for a row shown through a narrower window, or null when there is nothing to compare. */
+export function seasonCompare(row: Pick<BoardRow, 'hitRate' | 'seasonHitRate'>): { text: string; flag: 'hot' | 'cold' | null; delta: number } | null {
+  if (row.hitRate === undefined || row.seasonHitRate === undefined) return null
+  const delta = Math.round(row.hitRate - row.seasonHitRate)
+  const flag = delta >= DIVERGENCE_POINTS ? 'hot' : delta <= -DIVERGENCE_POINTS ? 'cold' : null
+  return { text: `Season ${Math.round(row.seasonHitRate)}%`, flag, delta }
 }
 
 export function rowKey(row: Pick<BoardRow, 'name' | 'team'>): string {

@@ -1,6 +1,6 @@
 import type { NHLPlayerGameLogRow } from './api'
 
-export const TIME_WINDOWS = ['Season', 'Last 30', 'Last 14', 'Last 7', 'Career'] as const
+export const TIME_WINDOWS = ['Season', 'Last 15', 'Last 10', 'Last 5', 'Last 30', 'Last 14', 'Last 7', 'Career'] as const
 export type TimeWindow = (typeof TIME_WINDOWS)[number]
 
 export const HOME_AWAY_OPTIONS = ['All', 'Home', 'Away'] as const

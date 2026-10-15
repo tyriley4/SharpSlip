@@ -1,12 +1,20 @@
 import type { GameOdds } from '@/lib/odds/types'
 import type { Sport } from '@/lib/sport/SportContext'
 import type { MlbGameInfo } from './data/mlbGame'
+import type { LineFacts } from './data/lines'
+import type { MlbGameFacts } from './data/mlb'
+import type { NbaGameFacts } from './data/nba'
+import type { NflGameFacts } from './data/nfl'
+import type { NhlGameFacts } from './data/nhl'
 
 export type OutcomeType = 'moneyline' | 'spread' | 'total' | 'player_prop' | 'first_half' | 'first_period'
 export type Direction = 'over' | 'under' | 'home' | 'away'
 export type EdgeCategory = 'recent_form' | 'hit_rate' | 'matchup' | 'situational' | 'h2h' | 'context' | 'role'
 
 /** The four layers a sharp bettor weighs: opportunity, statistical support, situation, and the market price. */
+/** Which time horizon an evidence item comes from; the written explanation uses it to reason about recency. */
+export type Horizon = 'career_vs_opp' | 'season_vs_opp' | 'recent_meetings' | 'season' | 'last30' | 'last15' | 'last7' | 'tonight' | 'career'
+
 export type EvidenceLayer = 'opportunity' | 'statistical' | 'situational' | 'market'
 
 export interface PlayerContext {
@@ -60,6 +68,11 @@ export interface Edge {
   ageDays?: number
   /** Whole seasons ago the evidence is from (0 = this season); drives the recency weight. */
   seasonsAgo?: number
+  horizon?: Horizon
+  /** Games behind the item when that is below the standard minimum: shown as an early-season signal. */
+  smallSample?: number
+  /** The numbers behind the item, so explanations can compare horizons (a rate is 0-1). */
+  metrics?: { rate?: number; avg?: number; n?: number }
   /** Quality sub-scores, each 0-3; set by the module or derived from the other fields. */
   quality?: { specificity: number; causality: number; recency: number; sample: number }
 }
@@ -77,6 +90,8 @@ export interface EdgeResult {
   sampleSize: number
   /** Primary evidence rests on fewer than 10 games, so the grade is capped at C. */
   limitedSample: boolean
+  /** How many facts pointed against the outcome (their wording never reaches the card; only the count). */
+  conflicts?: number
   /** Why there is no grade, in plain words. */
   ungradedReason?: string
   /** One plain sentence under the grade (no-edge, no live odds, role caps). */
@@ -105,9 +120,13 @@ export interface PlayerHistory {
   position: string
   /** Newest first. */
   games: PlayerGameRecord[]
+  /** Career stage, when age and experience could be read. */
+  stage?: CareerStage
 }
 
 export interface TeamGameRecord {
+  /** True for postseason games (they count as current-season results). */
+  playoff?: boolean
   season: number
   date: string
   opp: string
@@ -141,6 +160,21 @@ export interface TeammateOut {
   usage: { label: string; value: number } | null
 }
 
+export interface SeasonPhase {
+  current: number
+  historical: number
+  tonight: number
+  label: string
+}
+
+export interface CareerStage {
+  stage: 'ascending' | 'prime' | 'declining'
+  age: number | null
+  years: number | null
+  /** Plain label for the card, e.g. "ascending player - recent trajectory weighted heavily". */
+  label: string
+}
+
 export interface SeasonContext {
   isPreseason: boolean
   isPlayoffs: boolean
@@ -149,6 +183,8 @@ export interface SeasonContext {
   isEarlySeason: boolean
   playoffRound?: string
   seriesGame?: number
+  /** How the case should be split between this season, history and tonight at this point in the season. */
+  phase?: SeasonPhase
 }
 
 /** Everything about the game itself, loaded once and shared by every outcome in it. */
@@ -180,6 +216,8 @@ export interface GameContext {
   teammatesOut: TeammateOut[]
   /** MLB: lineups, probable starters, roof and game-time weather from the league feed. */
   mlb: MlbGameInfo | null
+  /** Sport-specific facts loaded once per game (starters, lineups, series and bullpens; snaps, target shares, depth charts; goalies). */
+  facts: { lines?: LineFacts | null; mlb?: MlbGameFacts | null; nfl?: NflGameFacts | null; nhl?: NhlGameFacts | null; nba?: NbaGameFacts | null }
   /** Season win% for every team in the league (current season), for opponent-quality splits. */
   leagueWinPct: Record<string, number>
   /** College only: each team's conference, for power-conference weighting. */

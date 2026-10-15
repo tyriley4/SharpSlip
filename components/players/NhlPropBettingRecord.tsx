@@ -1,6 +1,7 @@
 'use client'
 
 import { PropConviction, usePlayerConviction, type ConvictionPlayer } from '@/components/players/PropConviction'
+import { WindowCompareFromCareer } from '@/components/research/TimeWindow'
 import { CareerProvider, SeasonVsCareer } from '@/components/players/CareerCompare'
 import { useEffect, useState } from 'react'
 import { formatNHLThreshold } from '@/lib/nhl/bettingStats'
@@ -122,6 +123,7 @@ function PropCategoryCard({ playerId, isGoalie, category, player }: { playerId: 
           ) : stats ? (
             <div className="flex flex-col gap-2.5">
               <SeasonVsCareer season={stats} category={category} threshold={threshold} />
+              <WindowCompareFromCareer category={category} threshold={threshold} />
 
               <div>
                 <div className="mb-1 text-[9px] font-bold uppercase tracking-wide text-muted">Last 10</div>

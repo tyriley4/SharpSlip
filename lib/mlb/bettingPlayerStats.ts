@@ -10,6 +10,7 @@ import {
   thresholdsFor,
   type PropCategory,
 } from './bettingCategories'
+import { takeLastGames } from '@/lib/leaders/lastGames'
 import { DEFAULT_FILTERS, gameMatchesFilters, type LeaderFilters } from './filters'
 import { NOTABLE_HITTERS, NOTABLE_PITCHERS } from './notablePlayers'
 import { resolvePlayerIds } from './playerLookup'
@@ -32,7 +33,7 @@ export async function getPlayerCategoryStats(
   if (!log || log.length === 0) return null
 
   const statKey = categoryStatKey(category, group)
-  const filtered = log.filter((g) => gameMatchesFilters(g, filters, teams))
+  const filtered = takeLastGames(log.filter((g) => gameMatchesFilters(g, filters, teams)), filters.window, (g) => g.date)
   const hitRateResult = computeHitRate(filtered, statKey, threshold)
   const last10 = buildGameDots(log, statKey, threshold, 10, teams)
   const leagueAverage = await getLeagueAverage(group, category, threshold)

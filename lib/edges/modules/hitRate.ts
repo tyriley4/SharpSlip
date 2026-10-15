@@ -1,7 +1,8 @@
 import { MIN_CAREER_GAMES, MIN_SEASON_GAMES, MIN_SIGNAL_RATE, MIN_SPLIT_GAMES, daysSince, weightedPlayerRate, weightedTeamRate, type Rate } from '../historicalRates'
 import type { BettingOutcome, Edge, GameContext, ModuleOutput, TeamGameRecord } from '../types'
 import { q } from '../evidenceFramework'
-import { fmtPct, lineNoun, scaled, newestSeason, outcomeNoun, playerHit, rateRelevance, subjectTeam, teamEvidenceGames, teamHit, type ModuleInput } from './shared'
+import { minimumsFor } from '../minimums'
+import { fmtPct, lineNoun, scaled, seasonWeightFn, newestSeason, outcomeNoun, playerHit, rateRelevance, subjectTeam, teamEvidenceGames, teamHit, type ModuleInput } from './shared'
 
 const W_SEASON = 0.28
 const W_CAREER = 0.2
@@ -57,7 +58,7 @@ export function primaryRate({ outcome, game, history }: ModuleInput): Rate | nul
   const r =
     outcome.type === 'player_prop'
       ? history
-        ? weightedPlayerRate(history.games, (g) => playerHit(outcome, g))
+        ? weightedPlayerRate(history.games, (g) => playerHit(outcome, g), seasonWeightFn(history))
         : null
       : weightedTeamRate(teamEvidenceGames(outcome, game), (g) => teamHit(outcome, g))
   return r && r.games >= scaled(MIN_SEASON_GAMES, game) ? r : null
@@ -70,6 +71,7 @@ export function hitRateModule(input: ModuleInput): ModuleOutput {
   const { outcome: o, game, history } = input
   const edges: Edge[] = []
   let conflicts = 0
+  const mins = minimumsFor(game)
   const noun = outcomeNoun(o)
   const homeFlag = o.homeAway === 'home' ? true : o.homeAway === 'away' ? false : null
 
@@ -87,11 +89,11 @@ export function hitRateModule(input: ModuleInput): ModuleOutput {
     const sr = weightedPlayerRate(seasonGames, (g) => playerHit(o, g))
     if (sr && sr.games >= scaled(MIN_SEASON_GAMES, game)) {
       if (sr.rate > MIN_SIGNAL_RATE) {
-        push({ description: `Cleared ${noun} in ${fmtPct(sr.rate)} of ${sr.games} games ${seasonWord}`, category: 'hit_rate', relevanceScore: rateRelevance(sr.rate), supportingData: `${rec(sr)} ${seasonWord}`, weight: W_SEASON, sample: sr.games, seasonsAgo: seasonWord === 'this season' ? 0 : 1, quality: q(2, 2, seasonWord === 'this season' ? 2 : 1, sr.games >= 30 ? 3 : sr.games >= 15 ? 2 : 1) })
+        push({ description: `Cleared ${noun} in ${fmtPct(sr.rate)} of ${sr.games} games ${seasonWord}`, category: 'hit_rate', relevanceScore: rateRelevance(sr.rate), supportingData: `${rec(sr)} ${seasonWord}`, weight: W_SEASON, sample: sr.games, metrics: { rate: sr.rate, n: sr.games }, seasonsAgo: seasonWord === 'this season' ? 0 : 1, quality: q(2, 2, seasonWord === 'this season' ? 2 : 1, sr.games >= 30 ? 3 : sr.games >= 15 ? 2 : 1) })
       } else if (sr.rate < 0.48) conflicts++
     }
 
-    const cr = weightedPlayerRate(games, (g) => playerHit(o, g))
+    const cr = weightedPlayerRate(games, (g) => playerHit(o, g), seasonWeightFn(history))
     if (cr && cr.games >= scaled(MIN_CAREER_GAMES, game)) {
       const seasons = new Set(games.map((g) => g.season)).size
       if (cr.rate > MIN_SIGNAL_RATE) {
@@ -101,7 +103,7 @@ export function hitRateModule(input: ModuleInput): ModuleOutput {
 
     if (homeFlag !== null) {
       const venue = games.filter((g) => g.home === homeFlag)
-      const vr = weightedPlayerRate(venue, (g) => playerHit(o, g))
+      const vr = weightedPlayerRate(venue, (g) => playerHit(o, g), seasonWeightFn(history))
       if (vr && vr.games >= scaled(MIN_SPLIT_GAMES, game) && vr.rate > MIN_SIGNAL_RATE) {
         push({ description: `${homeFlag ? 'At home' : 'On the road'}, cleared ${noun} in ${fmtPct(vr.rate)} of ${vr.games} games`, category: 'hit_rate', relevanceScore: rateRelevance(vr.rate), supportingData: `${rec(vr)} ${homeFlag ? 'home' : 'away'}`, weight: W_SPLIT, sample: vr.games, quality: q(3, 2, 2, vr.games >= 30 ? 3 : vr.games >= 15 ? 2 : 1) })
       }
@@ -132,8 +134,8 @@ export function hitRateModule(input: ModuleInput): ModuleOutput {
       return (x: TeamGameRecord) => x.season === season
     }
     const season = pairRate(o, game, curOnly(team), curOnly(opp))
-    if (season && season.games >= scaled(MIN_SEASON_GAMES, game)) {
-      if (season.rate > MIN_SIGNAL_RATE) push({ description: `Matchup-adjusted this season: ${team} to ${what} about ${fmtPct(season.rate)} of the time`, category: 'hit_rate', relevanceScore: rateRelevance(season.rate), supportingData: explain(season), weight: W_SEASON, sample: season.games, quality: q(2, 2, 2, season.games >= 30 ? 3 : season.games >= 15 ? 2 : 1) })
+    if (season && season.games >= scaled(mins.early ? mins.winPct : MIN_SEASON_GAMES, game)) {
+      if (season.rate > MIN_SIGNAL_RATE) push({ description: `Matchup-adjusted this season: ${team} to ${what} about ${fmtPct(season.rate)} of the time`, category: 'hit_rate', relevanceScore: rateRelevance(season.rate), supportingData: explain(season), weight: W_SEASON, sample: season.games, smallSample: season.games < MIN_SEASON_GAMES ? season.games : undefined, quality: q(2, 2, 2, season.games >= 30 ? 3 : season.games >= 15 ? 2 : 1) })
       else if (season.rate < 0.48) conflicts++
     }
     const multi = pairRate(o, game)
@@ -144,7 +146,7 @@ export function hitRateModule(input: ModuleInput): ModuleOutput {
     }
     if (homeFlag !== null) {
       const venue = pairRate(o, game, (g) => g.home === homeFlag, (g) => g.home === !homeFlag)
-      if (venue && venue.games >= scaled(MIN_SPLIT_GAMES, game) && venue.rate > MIN_SIGNAL_RATE) push({ description: `${homeFlag ? 'At home' : 'On the road'}, ${team} to ${what} about ${fmtPct(venue.rate)} of the time when ${opp} is ${homeFlag ? 'away' : 'at home'}`, category: 'hit_rate', relevanceScore: rateRelevance(venue.rate), supportingData: explain(venue), weight: W_SPLIT, sample: venue.games, quality: q(3, 2, 2, venue.games >= 20 ? 3 : 2) })
+      if (venue && venue.games >= scaled(mins.early ? mins.venueSplit : MIN_SPLIT_GAMES, game) && venue.rate > MIN_SIGNAL_RATE) push({ description: `${homeFlag ? 'At home' : 'On the road'}, ${team} to ${what} about ${fmtPct(venue.rate)} of the time when ${opp} is ${homeFlag ? 'away' : 'at home'}`, category: 'hit_rate', relevanceScore: rateRelevance(venue.rate), supportingData: explain(venue), weight: W_SPLIT, sample: venue.games, smallSample: venue.games < MIN_SPLIT_GAMES ? venue.games : undefined, quality: q(3, 2, 2, venue.games >= 20 ? 3 : 2) })
     }
     return { edges, conflicts }
   }
@@ -154,7 +156,7 @@ export function hitRateModule(input: ModuleInput): ModuleOutput {
   const cur = all.filter((g) => g.season === curSeason)
   const label = 'Games cleared ' + noun
   const sr = weightedTeamRate(cur, (g) => teamHit(o, g))
-  if (sr && sr.games >= scaled(MIN_SEASON_GAMES, game)) {
+  if (sr && sr.games >= scaled(mins.early ? mins.winPct * 2 : MIN_SEASON_GAMES, game)) {
     if (sr.rate > MIN_SIGNAL_RATE) push({ description: `${label} in ${fmtPct(sr.rate)} of ${sr.games} games this season for these two teams`, category: 'hit_rate', relevanceScore: rateRelevance(sr.rate), supportingData: `${rec(sr)} in ${curSeason}`, weight: W_SEASON, sample: sr.games, quality: q(2, 2, 2, sr.games >= 30 ? 3 : 2) })
     else if (sr.rate < 0.48) conflicts++
   }

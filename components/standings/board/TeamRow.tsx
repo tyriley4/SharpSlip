@@ -69,6 +69,7 @@ export function TeamRow({
   const sub = [
     ...row.subline,
     ...(row.ats ? [{ key: 'ats', label: 'ATS', value: row.ats }] : []),
+    ...(row.atsLast5 ? [{ key: 'atsl5', label: 'ATS L5', value: row.atsLast5 }] : []),
     ...(row.ou ? [{ key: 'ou', label: 'O/U', value: row.ou }] : []),
   ]
 

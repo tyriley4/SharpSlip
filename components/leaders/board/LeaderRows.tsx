@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import { PlayerLink } from '@/components/players/PlayerLink'
 import { TeamLink } from '@/components/teams/TeamLink'
-import { bettingDisplay, GREEN, isDimmed, isSelected, RED, rowKey, WHITE } from './format'
+import { bettingDisplay, GREEN, isDimmed, isSelected, RED, rowKey, seasonCompare, WHITE } from './format'
 import { currentStreak, POSITION_COLORS, positionBadge, readableTeamColor } from './theme'
 import type { BoardContext, BoardRow } from './types'
 
@@ -97,6 +97,17 @@ function Row({ row, index, ctx }: { row: BoardRow; index: number; ctx: BoardCont
           {bet ? bet.value : row.value}
         </div>
         {bet && <div className="text-[10px] leading-tight text-muted">{bet.secondary}</div>}
+        {ctx.betting && (() => {
+          const c = seasonCompare(row)
+          return c ? (
+            <div className="text-[9px] leading-tight text-muted">
+              {c.text}
+              {c.flag && <span className={`ml-1 font-bold ${c.flag === 'hot' ? 'text-positive' : 'text-negative'}`}>{c.flag === 'hot' ? '↑ running hot' : '↓ running cold'} {c.delta > 0 ? '+' : ''}{c.delta}</span>}
+            </div>
+          ) : null
+        })()}
+        {ctx.betting && row.convictionNote === 'No game today — season hit rate shown' && <div className="max-w-[150px] text-[9px] leading-tight text-muted">{row.convictionNote}</div>}
+        {ctx.betting && row.grade && ctx.sortMode !== 'Conviction Score' && <div className="text-[9px] font-bold leading-tight text-accent">Tonight&apos;s conviction: {row.grade}</div>}
       </div>
     </div>
   )

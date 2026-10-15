@@ -25,6 +25,8 @@ export function BettingControls({
   onMinGames,
   relaxed,
   teams = false,
+  tonightOnly,
+  onTonightOnly,
 }: {
   sort: BettingSort
   onSort: (s: BettingSort) => void
@@ -34,6 +36,9 @@ export function BettingControls({
   relaxed: boolean
   /** Team rows have no player history to grade. */
   teams?: boolean
+  /** Only players whose team plays today, ranked by tonight's conviction. Omitted when the board has no such mode. */
+  tonightOnly?: boolean
+  onTonightOnly?: (v: boolean) => void
 }) {
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-border bg-card2 px-3 py-2.5">
@@ -57,6 +62,24 @@ export function BettingControls({
           ))}
         </div>
       </div>
+      {onTonightOnly && !teams && (
+        <div className="flex items-center gap-2.5">
+          <span className="w-[62px] shrink-0 text-[9px] font-extrabold tracking-[0.1em] text-muted">SHOW</span>
+          <div className="flex flex-wrap gap-1.5">
+            <Chip active={!tonightOnly} onClick={() => onTonightOnly(false)}>
+              All players
+            </Chip>
+            <Chip active={!!tonightOnly} onClick={() => onTonightOnly(true)}>
+              Tonight only
+            </Chip>
+          </div>
+        </div>
+      )}
+      {tonightOnly && !teams && (
+        <p className="text-[10px] leading-snug text-muted">
+          Players whose team has a game today, ranked by tonight&apos;s conviction (the top hit-rate players among them are graded).
+        </p>
+      )}
       {relaxed && (
         <p className="text-[10px] leading-snug text-muted">
           Early in the season — fewer than 3 players have {minGames}+ games, so every qualifying player is shown.

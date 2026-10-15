@@ -2,6 +2,7 @@ import type { LeaderRow } from '@/data/leaders/types'
 import { isCareer, mlbLog } from '@/lib/career/logs'
 import { mapWithConcurrency } from '@/lib/utils/concurrency'
 import { getPlayerHandednessSplit, type RawGameLogEntry } from './api'
+import { takeLastGames } from '@/lib/leaders/lastGames'
 import { gameMatchesFilters, type HandednessOption, type LeaderFilters } from './filters'
 import { NOTABLE_HITTERS, NOTABLE_PITCHERS } from './notablePlayers'
 import { resolvePlayerIds } from './playerLookup'
@@ -234,7 +235,7 @@ export async function getFilteredLeaders(
   const career = isCareer(filters.window)
   const results = await mapWithConcurrency(resolved, 8, async (p) => {
       const log = await mlbLog(p.id, group, career)
-      const matching = (log ?? []).filter((g) => gameMatchesFilters(g, filters, teams))
+      const matching = takeLastGames((log ?? []).filter((g) => gameMatchesFilters(g, filters, teams)), filters.window, (g) => g.date)
 
       if (sub === 'Hitters') {
         const agg = emptyHitterAgg()

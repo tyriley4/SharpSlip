@@ -96,7 +96,7 @@ export function NhlLeadersView({ leaders, onVisualize }: { leaders: LeaderGroup 
         if (!res.ok) throw new Error(`status ${res.status}`)
         return res.json()
       })
-      .then((data: { rows: { rank: number; playerId: number; name: string; teamAbbr: string; hitRate: number; wins: number; losses: number; gamesPlayed: number; last5: boolean[] }[] }) => {
+      .then((data: { rows: { rank: number; playerId: number; name: string; teamAbbr: string; hitRate: number; wins: number; losses: number; gamesPlayed: number; last5: boolean[]; seasonHitRate?: number }[] }) => {
         if (cancelled) return
         const mapped: BettingLeaderRow[] = data.rows.map((r) => ({
           rank: r.rank,
@@ -107,6 +107,7 @@ export function NhlLeadersView({ leaders, onVisualize }: { leaders: LeaderGroup 
           losses: r.losses,
           gamesPlayed: r.gamesPlayed,
           last5: r.last5,
+          seasonHitRate: r.seasonHitRate,
         }))
         setBettingCache((prev) => ({ ...prev, [bettingCacheKey]: mapped }))
       })

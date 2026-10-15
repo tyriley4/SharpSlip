@@ -53,6 +53,16 @@ export interface PlayerConvictionArgs {
 }
 
 /** A calculator "N+" (at least N) is the engine's Over (ceil(N) - 0.5) on whole-number stats. */
+/** The team's game today (the app's Eastern date), preferring one that has not finished. */
+export async function findTeamGame(sport: Sport, team: string): Promise<{ opponent: string; home: boolean; href: string } | null> {
+  const abbr = team.toUpperCase()
+  const games = (await todaysGames()).filter((g) => g.sport === sport && (g.away.abbr.toUpperCase() === abbr || g.home.abbr.toUpperCase() === abbr))
+  const g = games.find((x) => x.status !== 'Final') ?? games[0]
+  if (!g) return null
+  const home = g.home.abbr.toUpperCase() === abbr
+  return { opponent: home ? g.away.abbr : g.home.abbr, home, href: g.href }
+}
+
 export function lineForAtLeast(n: number): number {
   return Math.ceil(n) - 0.5
 }

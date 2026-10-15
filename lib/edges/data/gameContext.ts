@@ -14,10 +14,18 @@ import { getGameOdds } from '@/lib/odds/api'
 import { getTeamResults } from '@/lib/odds/history'
 import { getVenueWeather } from '@/lib/weather/api'
 import type { Sport } from '@/lib/sport/SportContext'
+import { seasonPhase } from '../historicalRates'
+import { gamesPlayed, minimumsFor } from '../minimums'
 import { detectGameContext } from '../seasonContext'
+import { getPostseasonRecords } from './postseason'
 import { ALWAYS_INDOOR, nflIndoors } from '../venues'
 import type { DefenseRank, GameContext, InjuryNote, TeamGameRecord } from '../types'
 import { loadMlbGameInfo, mlbIndoors, type MlbGameInfo } from './mlbGame'
+import { loadLineFacts } from './lines'
+import { loadMlbGameFacts } from './mlb'
+import { loadNbaGameFacts } from './nba'
+import { loadNflGameFacts } from './nfl'
+import { loadNhlGameFacts } from './nhl'
 import { loadTeammatesOut } from './teammates'
 
 /** ESPN season year for "now": basketball and hockey seasons are named for the year they end in. */
@@ -29,7 +37,7 @@ export function currentSeasonYear(sport: Sport, now = new Date()): number {
   return m >= 2 ? y : y - 1
 }
 
-async function teamRecords(sport: Sport, abbr: string, seasons: number[]): Promise<TeamGameRecord[]> {
+export async function teamRecords(sport: Sport, abbr: string, seasons: number[]): Promise<TeamGameRecord[]> {
   const lists = await Promise.all(seasons.map((s) => getTeamResults(sport, abbr, s).catch(() => null)))
   const out: TeamGameRecord[] = []
   lists.forEach((list, i) => {
@@ -38,6 +46,8 @@ async function teamRecords(sport: Sport, abbr: string, seasons: number[]): Promi
       out.push({ season: seasons[i], date: g.date, opp: home ? g.away : g.home, home, us: home ? g.homeScore : g.awayScore, them: home ? g.awayScore : g.homeScore })
     }
   })
+  // Postseason games belong to the current season; the regular-season schedule call never lists them.
+  if (seasons.includes(currentSeasonYear(sport))) out.push(...(await getPostseasonRecords(sport, abbr, currentSeasonYear(sport))))
   return out.sort((a, b) => b.date.localeCompare(a.date))
 }
 
@@ -218,10 +228,11 @@ export async function loadGameContext(sport: Sport, gameId: string, away: string
     const [season, winLeague, conf] = await Promise.all([detectGameContext({ sport, gameId, startTime }), leagueWinPct(sport), conferences(sport, [away, home])])
     const results = { [away]: [...awayCur, ...awayPrev], [home]: [...homeCur, ...homePrev] }
     const priorSeasonOnly = awayCur.length === 0 && homeCur.length === 0
+    const winMin = minimumsFor({ sport, results, home }).winPct
     const winPct: Record<string, number> = {}
     for (const [abbr, games] of Object.entries(results)) {
       const season = games.filter((g) => g.season === Math.max(...games.map((x) => x.season), 0))
-      if (season.length >= 8) winPct[abbr] = season.filter((g) => g.us > g.them).length / season.length
+      if (season.length >= winMin) winPct[abbr] = season.filter((g) => g.us > g.them).length / season.length
     }
     const restFor = (games: TeamGameRecord[]) => {
       const last = games[0]
@@ -231,6 +242,22 @@ export async function loadGameContext(sport: Sport, gameId: string, away: string
     const weekday = startTime ? new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'America/New_York' }).format(new Date(startTime)) : ''
     const injuries = injuryList(sport, [away, home], injuriesAll)
     const teammatesOut = await loadTeammatesOut(sport, injuries).catch(() => [])
+    const facts: GameContext['facts'] = {}
+    if (!season.isPreseason) {
+      const run = async <T,>(f: () => Promise<T | null> | T | null) => {
+        try {
+          return await f()
+        } catch (err) {
+          console.error(`[edges] ${sport} facts failed`, err)
+          return null
+        }
+      }
+      facts.lines = await run(() => loadLineFacts(sport, away, home, currentSeasonYear(sport), winLeague))
+      if (sport === 'mlb') facts.mlb = await run(() => loadMlbGameFacts(mlb, away, home))
+      else if (sport === 'nfl') facts.nfl = await run(() => loadNflGameFacts(away, home, currentSeasonYear('nfl')))
+      else if (sport === 'nhl') facts.nhl = await run(() => loadNhlGameFacts(away, home, startTime))
+      else if (sport === 'nba') facts.nba = loadNbaGameFacts({ away, home, results, startTime })
+    }
     const ctx: GameContext = {
       sport,
       gameId,
@@ -248,8 +275,9 @@ export async function loadGameContext(sport: Sport, gameId: string, away: string
       weather: await weatherFor(sport, gameId, home, startTime, mlb),
       flags: { divisional: divisional(sport, away, home), primetime: (sport === 'nfl' || sport === 'cfb') && (hour >= 19 || weekday === 'Thu' || weekday === 'Mon'), rivalry: null },
       priorSeasonOnly,
-      season,
+      season: { ...season, phase: seasonPhase(sport, gamesPlayed({ results, home }), season.isPlayoffs) },
       mlb,
+      facts,
       leagueWinPct: winLeague,
       conference: conf,
       lineMove: null,

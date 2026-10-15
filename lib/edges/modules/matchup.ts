@@ -1,5 +1,8 @@
 import type { DefenseRank, Edge, GameContext, ModuleOutput } from '../types'
+import { cbbOpponentWeight } from '../data/cbb'
+import { cfbOpponentWeight } from '../data/cfb'
 import { q } from '../evidenceFramework'
+import { minimumsFor } from '../minimums'
 import { avg, fmtPct, outcomeNoun, subjectTeam, type ModuleInput } from './shared'
 
 const W_DEFENSE = 0.22
@@ -16,17 +19,14 @@ function tierOf(r: DefenseRank): Tier {
   return 'middle'
 }
 
-const POWER_FOOTBALL = ['Southeastern Conference', 'Big Ten Conference', 'Big 12 Conference', 'Atlantic Coast Conference', 'Pac-12 Conference']
-const POWER_BASKETBALL = [...POWER_FOOTBALL, 'Big East Conference']
-
 /**
  * Opposition quality weighting. College football weighs power-conference opponents 1.3x and group-of-five 0.8x; college
  * basketball weighs conference strength; everything else uses the opponent's season win percentage.
  */
 function oppMultiplier(game: GameContext, opp: string): number | undefined {
   const conf = game.conference[opp]
-  if (game.sport === 'cfb' && conf) return POWER_FOOTBALL.includes(conf) || opp === 'ND' ? 1.3 : 0.8
-  if (game.sport === 'cbb' && conf) return POWER_BASKETBALL.includes(conf) ? 1.2 : 0.85
+  if (game.sport === 'cfb' && conf) return cfbOpponentWeight(conf, opp)
+  if (game.sport === 'cbb' && conf) return cbbOpponentWeight(conf)
   const w = game.winPct[opp]
   if (w === undefined) return undefined
   return w > 0.5 ? 1.2 : w >= 0.4 ? 1.0 : 0.8
@@ -40,19 +40,22 @@ const ordinal = (n: number) => {
 
 /** Mean margin of a team over its latest-season games (null below five games). */
 function seasonMargin(game: GameContext, abbr: string): number | null {
+  const need = minimumsFor(game).early ? 3 : 5
   const games = game.results[abbr] ?? []
   if (games.length === 0) return null
   const season = Math.max(...games.map((g) => g.season))
   const cur = games.filter((g) => g.season === season)
-  return cur.length >= 5 ? avg(cur.map((g) => g.us - g.them)) : null
+  return cur.length >= need ? avg(cur.map((g) => g.us - g.them)) : null
 }
 
 function venueWinPct(game: GameContext, abbr: string, home: boolean): { rate: number; n: number } | null {
+  const mins = minimumsFor(game)
+  const need = mins.early ? mins.venueSplit - 1 : 8
   const games = (game.results[abbr] ?? []).filter((g) => g.home === home)
   if (games.length === 0) return null
   const season = Math.max(...games.map((g) => g.season))
   const cur = games.filter((g) => g.season === season && g.us !== g.them)
-  return cur.length >= 8 ? { rate: cur.filter((g) => g.us > g.them).length / cur.length, n: cur.length } : null
+  return cur.length >= need ? { rate: cur.filter((g) => g.us > g.them).length / cur.length, n: cur.length } : null
 }
 
 /**

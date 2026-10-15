@@ -1,3 +1,4 @@
+import { takeLastGames } from '@/lib/leaders/lastGames'
 import { getBettingLeaders } from '@/lib/mlb/bettingLeaders'
 import type { PropCategory } from '@/lib/mlb/bettingCategories'
 import { getFilteredLeaders } from '@/lib/mlb/filteredLeaders'
@@ -175,7 +176,7 @@ async function nflAxis(sub: string, label: string, f: ScatterFilters): Promise<A
   const players = await loadNflPlayerGames(position, season)
   const out: { name: string; team: string; value: number }[] = []
   for (const p of players) {
-    const games = p.games.filter((g) => nflMatches(g, filters))
+    const games = takeLastGames(p.games.filter((g) => nflMatches(g, filters)), filters.window, (g) => g.date || g.week)
     if (games.length === 0) continue
     const v = nflStat(sub, label, games)
     if (v === null) return UNSUPPORTED(label)
@@ -226,7 +227,7 @@ async function nbaAxis(sub: string, label: string, f: ScatterFilters): Promise<A
   const rows = await mapWithConcurrency(pool, 5, async (p) => {
     const log = await getNBAPlayerGameLog(p.playerId, NBA_CURRENT_SEASON)
     if (!log || log.length < 15) return null
-    const filtered = log.filter((g) => nbaMatches(g, filters))
+    const filtered = takeLastGames(log.filter((g) => nbaMatches(g, filters)), filters.window, (g) => g.gameDate)
     if (filtered.length === 0) return null
     const v = nbaStat(label, filtered)
     return v === null ? ('unsupported' as const) : { name: p.name, team: p.teamAbbr, value: Math.round(v * 100) / 100 }
@@ -309,7 +310,7 @@ async function nhlAxis(sub: string, label: string, f: ScatterFilters): Promise<A
   const rows = await mapWithConcurrency(pool, 5, async (p) => {
     const log = await getNHLPlayerGameLog(p.playerId)
     if (!log || log.length < 5) return null
-    const filtered = log.filter((g) => nhlMatches(g, filters) && (!goalies || g.decision !== null))
+    const filtered = takeLastGames(log.filter((g) => nhlMatches(g, filters) && (!goalies || g.decision !== null)), filters.window, (g) => g.gameDate)
     if (filtered.length === 0) return null
     const v = goalies ? nhlGoalieStat(label, filtered) : nhlSkaterStat(label, filtered)
     return v === null ? ('unsupported' as const) : { name: p.name, team: p.teamAbbr, value: Math.round(v * 1000) / 1000 }

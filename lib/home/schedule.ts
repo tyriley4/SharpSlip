@@ -152,8 +152,8 @@ export async function getUnifiedGamesForDate(date: string): Promise<UnifiedGame[
   })
 }
 
+/** The US Eastern calendar date `days` from now: an 8pm Eastern first pitch is still "today", not tomorrow in UTC. */
 export function dateOffset(days: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+  const d = new Date(Date.now() + days * 86400000)
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
 }

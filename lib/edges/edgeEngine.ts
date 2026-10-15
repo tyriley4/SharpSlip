@@ -3,8 +3,14 @@ import { scoreConviction } from './convictionScore'
 import { getPlayerHistory } from './data/playerHistory'
 import { loadGameContext } from './data/gameContext'
 import { MIN_QUALITY, qualityOf } from './evidenceFramework'
+import { horizonGroup, horizonOf } from './horizon'
+import { stageEvidenceMultipliers } from './historicalRates'
+import { synthesisFor } from './teamSynthesis'
 import { contextModule } from './modules/context'
 import { h2hModule } from './modules/h2h'
+import { horizonsModule } from './modules/horizons'
+import { sportModule } from './modules/sport'
+import { teamModule } from './modules/team'
 import { hitRateModule, primaryRate } from './modules/hitRate'
 import { matchupModule } from './modules/matchup'
 import { opportunityModule } from './modules/opportunity'
@@ -20,6 +26,9 @@ const MAX_INSIGHTS = 8
 const MODULES: { name: string; run: (i: ModuleInput) => ModuleOutput & Partial<Pick<RoleOutput, 'gradeCap'>> }[] = [
   { name: 'role', run: roleModule },
   { name: 'opportunity', run: opportunityModule },
+  { name: 'sport', run: sportModule },
+  { name: 'team', run: teamModule },
+  { name: 'horizons', run: horizonsModule },
   { name: 'recentForm', run: recentFormModule },
   { name: 'hitRate', run: hitRateModule },
   { name: 'splits', run: splitsModule },
@@ -52,15 +61,27 @@ export function evaluateWithContext(outcome: BettingOutcome, game: GameContext, 
     }
   }
 
+  // Team synthesis: clusters of grade A/B player edges behind this team or total.
+  const syn = synthesisFor(outcome, extras?.synthesis, game)
+  edges.push(...syn.edges)
+
   const primary = primaryRate(input)
   const historicalRate = primary ? primary.rate : null
-  const surfaced = edges.filter((e) => qualityOf(e) >= MIN_QUALITY)
+  // Career stage: an ascending player's career is context and his current season leads; a declining veteran's career flatters him.
+  const mult = stageEvidenceMultipliers(history?.stage?.stage)
+  const surfaced = edges
+    .filter((e) => qualityOf(e) >= MIN_QUALITY)
+    .map((e) => {
+      if (mult.current === 1 && mult.career === 1) return e
+      const g = horizonGroup(horizonOf(e))
+      return g === 'historical' ? { ...e, weight: e.weight * mult.career } : g === 'current' ? { ...e, weight: e.weight * mult.current } : e
+    })
   const hitSamples = surfaced.filter((e) => e.category === 'hit_rate').map((e) => e.sample ?? 0)
   const sampleSize = primary ? primary.games : hitSamples.length ? Math.max(...hitSamples) : 0
 
   const scoring = surfaced.filter((e) => e.weight > 0)
   const informational = surfaced.filter((e) => e.weight === 0)
-  const conviction = scoreConviction({ edges: scoring, conflicts, historicalRate, impliedProbability: outcome.impliedProbability ?? null, sampleSize, season: game.season, gradeCap })
+  const conviction = scoreConviction({ edges: scoring, conflicts, historicalRate, impliedProbability: outcome.impliedProbability ?? null, sampleSize, season: game.season, gradeCap, synthesisMultiplier: syn.multiplier })
 
   // Flat list ranked by quality score, best first.
   const ranked = [...scoring, ...informational].sort((a, b) => qualityOf(b) - qualityOf(a) || b.relevanceScore * b.weight - a.relevanceScore * a.weight)
@@ -75,6 +96,7 @@ export function evaluateWithContext(outcome: BettingOutcome, game: GameContext, 
     limitedSample: conviction.limitedSample,
     ungradedReason: conviction.ungradedReason,
     gradeNote: conviction.gradeNote,
+    conflicts,
   }
 }
 

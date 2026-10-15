@@ -18,6 +18,8 @@ export interface BoardRow {
   losses?: number
   gamesPlayed?: number
   last5?: boolean[]
+  /** Hit rate over the full season, present when a narrower window is selected. */
+  seasonHitRate?: number
   /** Profit in dollars from flat $10 betting (Most Profitable sort) — at `price` when known, else -110. */
   profit?: number
   /** The prop's real American price at a sportsbook right now, when one is posted. */
@@ -69,6 +71,7 @@ export function boardRowsFromBetting(rows: (BettingLeaderRow & { profit?: number
     losses: r.losses,
     gamesPlayed: r.gamesPlayed,
     last5: r.last5,
+    seasonHitRate: r.seasonHitRate,
     profit: r.profit,
     price: r.price,
     priceBook: r.priceBook,

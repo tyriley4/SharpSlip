@@ -1,7 +1,8 @@
 import { q } from '../evidenceFramework'
+import { minimumsFor } from '../minimums'
 import { weightedPlayerRate, weightedTeamRate } from '../historicalRates'
 import type { Edge, ModuleOutput } from '../types'
-import { fmtPct, outcomeNoun, playerHit, rateRelevance, scaled, subjectTeam, teamHit, type ModuleInput } from './shared'
+import { fmtPct, outcomeNoun, playerHit, rateRelevance, scaled, seasonWeightFn, subjectTeam, teamHit, type ModuleInput } from './shared'
 
 const W_CAREER_VS = 0.12
 const W_RECENT_VS = 0.06
@@ -20,18 +21,20 @@ export function h2hModule({ outcome: o, game, history }: ModuleInput): ModuleOut
   const edges: Edge[] = []
   let conflicts = 0
   const noun = outcomeNoun(o)
-  const minMeetings = scaled(MIN_MEETINGS, game)
+  // Football teams meet rarely, so two career games are enough; everywhere else it takes three.
+  const minMeetings = scaled(minimumsFor(game).early ? minimumsFor(game).h2h : MIN_MEETINGS, game)
 
   if (o.type === 'player_prop') {
     const opp = o.opponent
     if (!opp || !history) return { edges, conflicts }
     const vs = history.games.filter((g) => g.opp === opp)
     if (vs.length < minMeetings) return { edges, conflicts }
-    const r = weightedPlayerRate(vs, (g) => playerHit(o, g))
+    const r = weightedPlayerRate(vs, (g) => playerHit(o, g), seasonWeightFn(history))
     if (r && r.rate > 0.52) {
       edges.push({
-        description: `Against ${opp}, has cleared ${noun} in ${r.hits} of ${r.games} career games (${fmtPct(r.hits / r.games)})`,
+        description: `Against ${opp}, has cleared ${noun} in ${r.hits} of ${r.games} career games (${fmtPct(r.hits / r.games)}), averaging ${(vs.reduce((n, g) => n + (g.values[o.category ?? ''] ?? 0), 0) / vs.length).toFixed(1)} ${o.category}`,
         category: 'h2h',
+        horizon: 'career_vs_opp',
         relevanceScore: rateRelevance(r.hits / r.games),
         supportingData: 'Recent seasons weighted more',
         weight: W_CAREER_VS,
@@ -84,6 +87,7 @@ export function h2hModule({ outcome: o, game, history }: ModuleInput): ModuleOut
         supportingData: 'Three-season window; older meetings are not used',
         weight: W_TEAM_VS,
         sample: r.games,
+        smallSample: r.games < MIN_MEETINGS ? r.games : undefined,
         seasonsAgo: 1,
         quality: q(3, 3, 1, sampleOf(r.games)),
       })

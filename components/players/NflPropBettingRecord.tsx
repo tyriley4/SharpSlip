@@ -2,6 +2,7 @@
 
 import { PropConviction, usePlayerConviction, type ConvictionPlayer } from '@/components/players/PropConviction'
 import { useMemo, useState } from 'react'
+import { WindowCompareFromCareer } from '@/components/research/TimeWindow'
 import { CareerProvider, rateTone, SeasonVsCareer, seasonFromGames, useCareer } from '@/components/players/CareerCompare'
 import { formatNflBettingThreshold, NFL_BETTING_CATEGORIES, NFL_BETTING_THRESHOLDS, type NflBettingSub } from '@/lib/nfl/bettingCategories'
 
@@ -68,6 +69,7 @@ function PropCategoryCard({ category, player }: { category: string; player?: Con
           ) : (
             <div className="flex flex-col gap-2.5">
               <SeasonVsCareer season={stats} category={category} threshold={threshold} />
+              <WindowCompareFromCareer category={category} threshold={threshold} />
               <div>
                 <div className="mb-1 text-[9px] font-bold uppercase tracking-wide text-muted">Last 10</div>
                 <div className="flex gap-1">

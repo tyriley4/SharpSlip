@@ -1,4 +1,5 @@
 import { q } from '../evidenceFramework'
+import { minimumsFor } from '../minimums'
 import { MIN_SIGNAL_RATE } from '../historicalRates'
 import type { Edge, ModuleOutput, TeamGameRecord } from '../types'
 import { fmtPct, lineNoun, scaled, subjectTeam, teamHit, type ModuleInput } from './shared'
@@ -22,6 +23,7 @@ export function splitsModule({ outcome: o, game }: ModuleInput): ModuleOutput {
   const oppPct = game.leagueWinPct[opp]
   if (oppPct === undefined) return { edges, conflicts }
 
+  const mins = minimumsFor(game)
   const all = game.results[team] ?? []
   if (all.length === 0) return { edges, conflicts }
   const season = Math.max(...all.map((g) => g.season))
@@ -36,8 +38,8 @@ export function splitsModule({ outcome: o, game }: ModuleInput): ModuleOutput {
     return { n: res.length, k: res.filter(Boolean).length }
   }
   const candidates = [
-    { label: `against teams ${tonightTier === 'weak' ? 'under' : 'at or above'} .500`, r: rate(tier), min: scaled(8, game) },
-    { label: `${o.team!.home ? 'at home' : 'on the road'} against teams ${tonightTier === 'weak' ? 'under' : 'at or above'} .500`, r: rate(venueTier), min: scaled(6, game) },
+    { label: `against teams ${tonightTier === 'weak' ? 'under' : 'at or above'} .500`, r: rate(tier), min: scaled(mins.tierSplit, game) },
+    { label: `${o.team!.home ? 'at home' : 'on the road'} against teams ${tonightTier === 'weak' ? 'under' : 'at or above'} .500`, r: rate(venueTier), min: scaled(mins.venueSplit, game) },
   ].filter((c) => c.r.n >= c.min)
   if (candidates.length === 0) return { edges, conflicts }
   const best = candidates.sort((a, b) => b.r.k / b.r.n - a.r.k / a.r.n || b.r.n - a.r.n)[0]
@@ -52,6 +54,7 @@ export function splitsModule({ outcome: o, game }: ModuleInput): ModuleOutput {
       weight: W_TIER,
       quality: q(3, 3, 2, best.r.n >= 15 ? 3 : 2),
       sample: best.r.n,
+      smallSample: best.r.n < 8 ? best.r.n : undefined,
     })
   } else if (share < 0.45) conflicts++
   return { edges, conflicts }

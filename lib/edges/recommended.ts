@@ -9,7 +9,10 @@ import { slugify } from '@/lib/players/slug'
 import type { Sport } from '@/lib/sport/SportContext'
 import { loadGameContext } from './data/gameContext'
 import { loadHitterMatchup, type HitterMatchup } from './data/mlbMatchup'
-import { EARLY_SEASON_NOTE, PLAYOFF_BANNER, PRESEASON_ANALYSIS_NOTE } from './seasonText'
+import type { ExplanationContext } from './explanationGenerator'
+import { qualityOf } from './qualityFilter'
+import { computeSynthesis } from './teamSynthesis'
+import { EARLY_SEASON_NOTE, NBA_ANALYSIS_NOTE, PLAYOFF_BANNER, PRESEASON_ANALYSIS_NOTE } from './seasonText'
 import { getPlayerHistory, categoryForMarket } from './data/playerHistory'
 import { rosterIndex } from './data/rosters'
 import { evaluateWithContext } from './edgeEngine'
@@ -19,6 +22,10 @@ export interface BetInsight {
   description: string
   category: Edge['category']
   supportingData: string
+  /** 0-12 quality score; items at 6-8 are drawn muted, 9+ at full weight. */
+  quality?: number
+  /** Games behind the item when it rests on fewer than the standard minimum (an early-season signal). */
+  smallSample?: number
 }
 
 export interface BetLeg {
@@ -31,6 +38,15 @@ export interface BetLeg {
   matchup: string
   grade?: string
   book?: string
+}
+
+/** Everything the written explanation needs, so tapping the icon makes no request. */
+export interface BetExplainData {
+  outcome: Pick<BettingOutcome, 'type' | 'direction' | 'player' | 'team' | 'opponent'>
+  evidence: Edge[]
+  context: ExplanationContext
+  conflicts: number
+  impliedProbability: number | null
 }
 
 export interface BetCardData {
@@ -53,6 +69,7 @@ export interface BetCardData {
   ungradedReason?: string
   /** One plain sentence about the grade: no-edge, weak evidence, no live odds, role cap. */
   gradeNote?: string
+  explain?: BetExplainData
   insights: BetInsight[]
   leg: BetLeg
   sport: Sport
@@ -99,11 +116,13 @@ const FIRST_HALF_NOTE: Record<Sport, string> = {
 
 const SPREAD_NAME: Record<Sport, string> = { mlb: 'Run Line', nhl: 'Puck Line', nba: 'Spread', nfl: 'Spread', cfb: 'Spread', cbb: 'Spread' }
 
-const insightsOf = (r: EdgeResult): BetInsight[] => r.edges.map((e) => ({ description: e.description, category: e.category, supportingData: e.supportingData }))
+const insightsOf = (r: EdgeResult): BetInsight[] => r.edges.map((e) => ({ description: e.description, category: e.category, supportingData: e.supportingData, quality: qualityOf(e), smallSample: e.smallSample }))
 
 function card(
   base: { id: string; section: 'game' | 'prop'; market: string; description: string; odds: number | null; book: string | null; estimated: boolean; implied: number | null; sport: Sport; gameId: string; matchup: string; typeLabel: string; player?: BetCardData['player'] },
-  r: EdgeResult
+  r: EdgeResult,
+  outcome: BettingOutcome,
+  game: GameContext
 ): BetCardData {
   const prob = base.implied !== null ? base.implied : (r.historicalHitRate ?? 50)
   return {
@@ -124,6 +143,13 @@ function card(
     sampleSize: r.sampleSize,
     ungradedReason: r.ungradedReason,
     gradeNote: r.gradeNote,
+    explain: {
+      outcome: { type: outcome.type, direction: outcome.direction, player: outcome.player, team: outcome.team, opponent: outcome.opponent },
+      evidence: r.edges,
+      context: { season: game.season, hasOdds: base.odds !== null, priorSeasonOnly: game.priorSeasonOnly, away: game.away, home: game.home, sport: game.sport },
+      conflicts: r.conflicts ?? 0,
+      impliedProbability: base.implied,
+    },
     insights: insightsOf(r),
     sport: base.sport,
     gameId: base.gameId,
@@ -246,17 +272,9 @@ export async function buildRecommended(sport: Sport, gameId: string, away: strin
   const odds = game.odds
   const season = game.season
   if (season.isPreseason) {
-    return { sport, gameId, matchup, generatedAt: new Date().toISOString(), oddsSource: 'estimated', note: null, gameLines: [], props: [], propsNote: null, firstHalfNote: FIRST_HALF_NOTE[sport], priorSeasonOnly: false, season, seasonNote: PRESEASON_ANALYSIS_NOTE, unavailable: false }
+    return { sport, gameId, matchup, generatedAt: new Date().toISOString(), oddsSource: 'estimated', note: null, gameLines: [], props: [], propsNote: null, firstHalfNote: FIRST_HALF_NOTE[sport], priorSeasonOnly: false, season, seasonNote: sport === 'nba' ? NBA_ANALYSIS_NOTE : PRESEASON_ANALYSIS_NOTE, unavailable: false }
   }
   const seasonNote = season.isPlayoffs ? PLAYOFF_BANNER : season.isEarlySeason ? EARLY_SEASON_NOTE : null
-
-  // ---- Game lines
-  const specs = odds ? realLineSpecs(odds, sport, gameId, matchup) : []
-  const usingEstimates = specs.length === 0
-  const lineSpecs = usingEstimates ? estimatedLineSpecs(game, sport, gameId, matchup) : specs
-  const gameLines = lineSpecs.map((s) =>
-    card({ id: s.id, section: 'game', market: s.market, description: s.description, odds: s.odds, book: s.book, estimated: s.estimated, implied: s.implied, sport, gameId, matchup, typeLabel: s.typeLabel }, evaluateWithContext(s.outcome, game, null))
-  )
 
   // ---- Player props (real offers only; no price is ever invented)
   const propsStatus = offersOverride
@@ -330,9 +348,18 @@ export async function buildRecommended(sport: Sport, gameId: string, away: strin
       }
       const result = category ? evaluateWithContext(outcome, game, history, { hitterMatchup: hitterMatchups.get(o.player) ?? null }) : evaluateWithContext({ ...outcome, category: undefined }, game, null)
       const id = mk(sport, gameId, matchup, 'Player Prop', `${o.market}:${o.player}:${o.line}:${side === 'over' ? 'O' : 'U'}`, '', '', 0, 0, '').id
-      cards.push(card({ id, section: 'prop', market: o.marketLabel, description, odds: s.price, book: s.book, estimated: false, implied, sport, gameId, matchup, typeLabel: 'Player Prop', player: { name: o.player, team, position } }, result))
+      cards.push(card({ id, section: 'prop', market: o.marketLabel, description, odds: s.price, book: s.book, estimated: false, implied, sport, gameId, matchup, typeLabel: 'Player Prop', player: { name: o.player, team, position } }, result, outcome, game))
     }
   }
+
+  // ---- Game lines (after the props, so clusters of player edges can lift the team and total bets)
+  const synthesis = computeSynthesis(cards, game)
+  const specs = odds ? realLineSpecs(odds, sport, gameId, matchup) : []
+  const usingEstimates = specs.length === 0
+  const lineSpecs = usingEstimates ? estimatedLineSpecs(game, sport, gameId, matchup) : specs
+  const gameLines = lineSpecs.map((s) =>
+    card({ id: s.id, section: 'game', market: s.market, description: s.description, odds: s.odds, book: s.book, estimated: s.estimated, implied: s.implied, sport, gameId, matchup, typeLabel: s.typeLabel }, evaluateWithContext(s.outcome, game, null, { synthesis }), s.outcome, game)
+  )
 
   // Group by position group, players ranked by their best conviction.
   const byGroup = new Map<string, Map<string, { name: string; team: string; position: string; bets: BetCardData[] }>>()

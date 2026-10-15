@@ -1,7 +1,8 @@
 import { slugify } from '@/lib/players/slug'
 import { daysSince } from './historicalRates'
 import { q } from './evidenceFramework'
-import { avg, type ModuleInput } from './modules/shared'
+import type { ModuleInput } from './modules/shared'
+import { expansionEvidence, stageAndTrajectory } from './roleExpansion'
 import type { Edge, Grade, ModuleOutput, PlayerGameRecord } from './types'
 
 /**
@@ -37,19 +38,6 @@ function lastN(games: PlayerGameRecord[], key: string, n: number) {
   return games.slice(0, n).map((g) => g.values[key]).filter((v): v is number => typeof v === 'number')
 }
 
-/** Usage stat per sport/category that describes a player's role, with the floor that makes the evidence meaningful. */
-function usageKey(sport: string, position: string, category: string): { key: string; label: string; floor: number; window: number } | null {
-  const p = position.toUpperCase()
-  if (sport === 'nfl') {
-    if (category === 'Rush Yards') return { key: 'Rush Attempts', label: 'carries', floor: 10, window: 4 }
-    if (category === 'Receiving Yards' || category === 'Receptions') return { key: 'Targets', label: 'targets', floor: 4.5, window: 5 }
-    return null
-  }
-  if (sport === 'nba' && ['Points', 'Rebounds', 'Assists'].includes(category)) return { key: 'Minutes', label: 'minutes', floor: 24, window: 5 }
-  if (sport === 'nhl' && p !== 'G' && ['Points', 'Shots on Goal', 'Assists'].includes(category)) return { key: 'TOI', label: 'minutes of ice time', floor: 15, window: 5 }
-  return null
-}
-
 export function roleModule({ outcome: o, game, history }: ModuleInput): RoleOutput {
   const edges: Edge[] = []
   let conflicts = 0
@@ -63,7 +51,8 @@ export function roleModule({ outcome: o, game, history }: ModuleInput): RoleOutp
   // ---- Layoff: the team has played several games since the player's last one, in the same season.
   const teamGames = game.results[team] ?? []
   const curSeason = teamGames.length ? Math.max(...teamGames.map((g) => g.season)) : null
-  const curTeamGames = curSeason === null ? [] : teamGames.filter((g) => g.season === curSeason)
+  // Regular-season games only: the player logs behind the history do not carry postseason games for every sport.
+  const curTeamGames = curSeason === null ? [] : teamGames.filter((g) => g.season === curSeason && !g.playoff)
   if (games.length >= 8 && curTeamGames.length >= 4 && !game.priorSeasonOnly) {
     const lastDate = dayOf(games[0].date)
     const firstTeamDate = dayOf(curTeamGames[curTeamGames.length - 1].date)
@@ -117,38 +106,11 @@ export function roleModule({ outcome: o, game, history }: ModuleInput): RoleOutp
     if (game.sport === 'nfl' && tp === 'QB' && o.category === 'Receiving Yards' && over) conflicts++
   }
 
-  // ---- Usage trend from the player's own log (role clarity and direction).
-  const spec = usageKey(game.sport, position, o.category)
-  if (spec && games.length >= 8) {
-    const recent = lastN(games, spec.key, spec.window)
-    const season = games.filter((g) => g.season === games[0].season)
-    const seasonVals = season.map((g) => g.values[spec.key]).filter((v): v is number => typeof v === 'number')
-    if (recent.length >= Math.min(spec.window, 4) && seasonVals.length >= 4) {
-      const r = avg(recent)
-      const s = avg(seasonVals)
-      const age = daysSince(games[0].date)
-      const fresh = age <= 21
-      if (over && r >= spec.floor && fresh) {
-        const up = r >= s * 1.12
-        edges.push({
-          description: up
-            ? `Usage is climbing: ${r.toFixed(1)} ${spec.label} per game over the last ${recent.length} against ${s.toFixed(1)} for the season`
-            : `Clear role: ${r.toFixed(1)} ${spec.label} per game over the last ${recent.length} games`,
-          category: 'role',
-          layer: 'opportunity',
-          relevanceScore: Math.min(1, 0.55 + Math.max(0, r / Math.max(spec.floor, 1) - 1) * 0.5 + (up ? 0.15 : 0)),
-          supportingData: `Season average ${s.toFixed(1)} ${spec.label}`,
-          weight: up ? 0.16 : 0.12,
-          ageDays: age,
-          quality: q(3, 3, 3, recent.length >= 5 ? 1 : 0),
-          sample: recent.length,
-        })
-      } else if (over && r <= s * 0.85) conflicts++
-      else if (!over && r <= s * 0.85 && fresh) {
-        edges.push({ description: `Usage is down: ${r.toFixed(1)} ${spec.label} per game over the last ${recent.length} against ${s.toFixed(1)} for the season`, category: 'role', layer: 'opportunity', relevanceScore: 0.6, supportingData: 'Fewer opportunities lowers the ceiling', weight: 0.12, ageDays: age, quality: q(3, 3, 3, 1), sample: recent.length })
-      }
-    }
-  }
+  // ---- Role expansion (targets, carries, snaps, minutes, ice time), career stage and trajectory.
+  const exp = expansionEvidence({ outcome: o, game, history })
+  const traj = stageAndTrajectory({ outcome: o, game, history })
+  edges.push(...exp.edges, ...traj.edges)
+  conflicts += exp.conflicts + traj.conflicts
 
   // ---- MLB lineup spot: more plate appearances and run chances at the top of the order.
   if (game.sport === 'mlb' && game.mlb && ['Hits', 'Home Runs', 'Total Bases'].includes(o.category) && o.homeAway) {

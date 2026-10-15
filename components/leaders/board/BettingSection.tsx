@@ -87,9 +87,9 @@ function withConviction(rows: BoardRow[], results: Record<string, ConvictionResu
   if (!results) return rows
   return rows.map((r) => {
     const key = `${r.name}|${r.team}`
-    if (!(key in results)) return { ...r, convictionNote: 'Not graded (outside top hit rates)' }
+    if (!(key in results)) return r
     const c = results[key]
-    return c ? { ...r, grade: c.grade, conviction: c.convictionScore, convictionNote: c.grade ? undefined : 'Insufficient data' } : { ...r, grade: null, convictionNote: 'No game tonight' }
+    return c ? { ...r, grade: c.grade, conviction: c.convictionScore, convictionNote: c.grade ? undefined : 'Insufficient data' } : { ...r, grade: null, convictionNote: 'No game today — season hit rate shown' }
   })
 }
 
@@ -124,18 +124,41 @@ export function BettingSection({
   teamFilter: TeamFilterValue
   onClear?: () => void
 }) {
-  const convictionOn = rank.sort === 'Conviction Score' && !ctx.isTeamRows
-  const conv = useBoardConviction(convictionOn, trend, rank.rows)
+  // Conviction is fetched for every player board (tonight's matchup evidence, not just the season rate); the Conviction Score
+  // sort additionally re-orders the graded players by it.
+  const convictionOn = !ctx.isTeamRows
+  const [tonightOnly, setTonightOnly] = useState(false)
+  const [tonight, setTonight] = useState<{ sport: string; teams: string[] } | null>(null)
+  useEffect(() => {
+    if (!tonightOnly || tonight?.sport === ctx.sport) return
+    let cancelled = false
+    fetch(`/api/teams-today?sport=${ctx.sport}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`status ${r.status}`))))
+      .then((d: { teams: string[] }) => !cancelled && setTonight({ sport: ctx.sport, teams: d.teams }))
+      .catch(() => !cancelled && setTonight({ sport: ctx.sport, teams: [] }))
+    return () => {
+      cancelled = true
+    }
+  }, [tonightOnly, ctx.sport, tonight?.sport])
+  const tonightSet = tonightOnly && tonight?.sport === ctx.sport ? new Set(tonight.teams) : null
+  // "Tonight only" keeps the players whose team plays today and re-numbers them.
+  const baseRows = useMemo(
+    () => (tonightSet ? rank.rows.filter((r) => tonightSet.has(r.team)).map((r, i) => ({ ...r, rank: i + 1 })) : rank.rows),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rank.rows, tonight, tonightOnly]
+  )
+  const reorder = (rank.sort === 'Conviction Score' || !!tonightSet) && convictionOn
+  const conv = useBoardConviction(convictionOn, trend, baseRows)
 
   // Conviction Score re-orders the graded top players by conviction; everyone else keeps hit-rate order after them.
   const rows = useMemo(() => {
-    if (!convictionOn || !conv.results) return rank.rows
+    if (!reorder || !conv.results) return baseRows
     const scored = conv.candidates
       .map((r) => ({ r, c: conv.results![rowKey(r)] ?? null }))
       .sort((a, b) => (b.c?.grade ? 1 : 0) - (a.c?.grade ? 1 : 0) || (b.c?.convictionScore ?? 0) - (a.c?.convictionScore ?? 0) || b.r.hitRate - a.r.hitRate)
-    const rest = rank.rows.slice(conv.candidates.length)
+    const rest = baseRows.slice(conv.candidates.length)
     return [...scored.map((x) => x.r), ...rest].map((r, i) => ({ ...r, rank: i + 1 }))
-  }, [convictionOn, conv.results, conv.candidates, rank.rows])
+  }, [reorder, conv.results, conv.candidates, baseRows])
 
   const avgHitRate = useMemo(() => {
     const wins = rows.reduce((s, r) => s + r.wins, 0)
@@ -168,9 +191,14 @@ export function BettingSection({
         {avgHitRate !== null && !loading && <p className="pl-1 text-[11px] text-muted">Avg hit rate: {avgHitRate}% across qualifying players</p>}
       </div>
 
-      <BettingControls sort={rank.sort} onSort={rank.setSort} minGames={rank.minGames} onMinGames={rank.setMinGames} relaxed={rank.relaxed} teams={ctx.isTeamRows} />
+      <BettingControls sort={rank.sort} onSort={rank.setSort} minGames={rank.minGames} onMinGames={rank.setMinGames} relaxed={rank.relaxed} teams={ctx.isTeamRows} tonightOnly={tonightOnly} onTonightOnly={setTonightOnly} />
 
-      {loading || (convictionOn && conv.loading) ? (
+      {tonightOnly && !tonightSet && !loading ? (
+        <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card py-14 text-xs text-muted">
+          <span className="h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-accent" />
+          Finding tonight&apos;s games…
+        </div>
+      ) : loading || (reorder && conv.loading) ? (
         <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card py-14 text-xs text-muted">
           <span className="h-3 w-3 animate-spin rounded-full border-2 border-muted border-t-accent" />
           {career ? 'Calculating career hit rates (this can take a moment)…' : 'Calculating hit rates…'}

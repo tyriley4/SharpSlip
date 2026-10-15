@@ -2,6 +2,7 @@ import { isCareer, mlbLog } from '@/lib/career/logs'
 import { mapWithConcurrency } from '@/lib/utils/concurrency'
 import { buildGameDots, computeHitRate } from './bettingStats'
 import { categoryStatKey, type PropCategory } from './bettingCategories'
+import { isRollingWindow, takeLastGames } from '@/lib/leaders/lastGames'
 import { gameMatchesFilters, type LeaderFilters } from './filters'
 import { NOTABLE_HITTERS, NOTABLE_PITCHERS } from './notablePlayers'
 import { resolvePlayerIds } from './playerLookup'
@@ -16,6 +17,8 @@ export interface BettingLeaderRow {
   losses: number
   gamesPlayed: number
   last5: boolean[]
+  /** Hit rate over the whole season when a narrower window is selected, for the side-by-side divergence flag. */
+  seasonHitRate?: number
 }
 
 /** A player must have at least this many games played this season to qualify for a betting leaderboard. */
@@ -45,10 +48,13 @@ export async function getBettingLeaders(
       const log = await mlbLog(p.id, group, career)
       if (!log || log.length < MIN_SEASON_GAMES) return null
 
-      const filtered = log.filter((g) => gameMatchesFilters(g, filters, teams))
+      const filtered = takeLastGames(log.filter((g) => gameMatchesFilters(g, filters, teams)), filters.window, (g) => g.date)
       if (filtered.length === 0) return null
 
       const { hitRate, wins, losses, gamesPlayed } = computeHitRate(filtered, statKey, threshold)
+      const seasonHitRate = isRollingWindow(filters.window)
+        ? computeHitRate(log.filter((g) => gameMatchesFilters(g, { ...filters, window: 'Season' }, teams)), statKey, threshold).hitRate
+        : undefined
       const last5 = buildGameDots(filtered, statKey, threshold, 5, teams).map((d) => d.hit)
       const teamId = filtered[filtered.length - 1]?.team.id
       return {
@@ -59,6 +65,7 @@ export async function getBettingLeaders(
         losses,
         gamesPlayed,
         last5,
+        seasonHitRate,
       }
     })
 

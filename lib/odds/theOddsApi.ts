@@ -238,6 +238,7 @@ export const PROP_MARKETS: Record<Sport, { key: string; label: string }[]> = {
     { key: 'player_pass_yds', label: 'Passing Yards' },
     { key: 'player_rush_yds', label: 'Rushing Yards' },
     { key: 'player_reception_yds', label: 'Receiving Yards' },
+    { key: 'player_receptions', label: 'Receptions' },
   ],
   nba: [
     { key: 'player_points', label: 'Points' },
