@@ -12,6 +12,8 @@ export interface Edge {
   altPlay: string
   analysis: string
   bullets: string[]
+  /** Written explanation of the bet, from the same evidence as the card (Analysis control). */
+  explanation?: string
   /** Real price / parlay line for this edge when it comes from a posted market. */
   market?: EdgeMarket
 }

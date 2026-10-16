@@ -1,6 +1,7 @@
 import { reportError } from '@/lib/monitoring/sentry'
 import { mapWithConcurrency } from '@/lib/utils/concurrency'
 import { cached } from '@/lib/net/ttlCache'
+import { dateOffset, getUnifiedGamesForDate } from '@/lib/home/schedule'
 import { getCachedPlayerProps, getPlayerPropsStatus } from '@/lib/odds/api'
 import type { GameOdds, PropOffer, Side } from '@/lib/odds/types'
 import { impliedProb, noVigProb } from '@/lib/parlay/math'
@@ -93,6 +94,8 @@ export interface RecommendedBets {
   note: string | null
   gameLines: BetCardData[]
   props: PropGroup[]
+  /** Why game lines are missing for a game that is under way or finished (never filled with estimates). */
+  linesUnavailable?: string
   /** Why there are no props (budget / not posted / none). */
   propsNote: string | null
   firstHalfNote: string
@@ -227,7 +230,8 @@ function estimatedLineSpecs(game: GameContext, sport: Sport, gameId: string, mat
   const margin = mean(h.map((g) => g.us - g.them)) - mean(a.map((g) => g.us - g.them))
   // Each margin is against an average opponent; half the gap (small samples regress) is the expected home margin, and the home number is its negative.
   const cap = sport === 'nfl' || sport === 'cfb' ? 17 : sport === 'nba' || sport === 'cbb' ? 12 : 1.5
-  const homeLine = half(Math.max(-cap, Math.min(cap, -margin / 2))) || -0.5
+  // Baseball and hockey run/puck lines are always 1.5 with the favourite laying it, so only the direction is estimated.
+  const homeLine = sport === 'mlb' || sport === 'nhl' ? (margin >= 0 ? -1.5 : 1.5) : half(Math.max(-cap, Math.min(cap, -margin / 2))) || -0.5
   const specs: LineSpec[] = []
   const t = (abbr: string, opp: string, isHome: boolean) => ({ abbr, opponent: opp, home: isHome })
   for (const [abbr, opp, isHome, line] of [
@@ -242,6 +246,14 @@ function estimatedLineSpecs(game: GameContext, sport: Sport, gameId: string, mat
   }
   void matchup
   return specs
+}
+
+/** Whether the game is under way or finished (its pregame lines are gone and must not be replaced by estimates). */
+async function gamePhase(sport: Sport, gameId: string, startTime: string | null): Promise<'live' | 'final' | null> {
+  const games = (await cached('edges:todays-games', 600, () => getUnifiedGamesForDate(dateOffset(0)))) ?? []
+  const g = games.find((x) => x.sport === sport && x.id === gameId)
+  if (g) return g.status === 'Final' ? 'final' : g.status === 'Live' ? 'live' : null
+  return startTime && Date.parse(startTime) <= Date.now() ? 'live' : null
 }
 
 /** Position group label for the props list, by sport. */
@@ -355,8 +367,14 @@ export async function buildRecommended(sport: Sport, gameId: string, away: strin
   // ---- Game lines (after the props, so clusters of player edges can lift the team and total bets)
   const synthesis = computeSynthesis(cards, game)
   const specs = odds ? realLineSpecs(odds, sport, gameId, matchup) : []
-  const usingEstimates = specs.length === 0
-  const lineSpecs = usingEstimates ? estimatedLineSpecs(game, sport, gameId, matchup) : specs
+  let linesUnavailable: string | undefined
+  if (specs.length === 0) {
+    // A game under way or finished has no pregame market: say so instead of estimating lines the market never offered.
+    const phase = await gamePhase(sport, gameId, game.startTime)
+    if (phase) linesUnavailable = phase === 'final' ? 'This game is final, so its lines are no longer posted' : 'Live odds unavailable for in-progress game'
+  }
+  const usingEstimates = specs.length === 0 && !linesUnavailable
+  const lineSpecs = linesUnavailable ? [] : usingEstimates ? estimatedLineSpecs(game, sport, gameId, matchup) : specs
   const gameLines = lineSpecs.map((s) =>
     card({ id: s.id, section: 'game', market: s.market, description: s.description, odds: s.odds, book: s.book, estimated: s.estimated, implied: s.implied, sport, gameId, matchup, typeLabel: s.typeLabel }, evaluateWithContext(s.outcome, game, null, { synthesis }), s.outcome, game)
   )
@@ -397,6 +415,7 @@ export async function buildRecommended(sport: Sport, gameId: string, away: strin
     generatedAt: new Date().toISOString(),
     oddsSource: usingEstimates ? 'estimated' : 'real',
     note: usingEstimates ? 'Live odds temporarily unavailable - showing estimated lines' : null,
+    linesUnavailable,
     gameLines,
     props: props.filter((g) => g.players.length > 0),
     propsNote,

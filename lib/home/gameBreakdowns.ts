@@ -40,7 +40,8 @@ async function collect(games: UnifiedGame[], fetcher: (id: string) => Promise<Fe
 export async function getTodaysGameBreakdowns(): Promise<Record<Sport, GameEdges[]>> {
   const games = await getUnifiedGamesForDate(dateOffset(0))
   const bySport: Record<Sport, UnifiedGame[]> = { mlb: [], nfl: [], cfb: [], nba: [], cbb: [], nhl: [] }
-  for (const g of games) bySport[g.sport].push(g)
+  // Games already under way or finished have no pregame market to grade, so they never take one of the per-sport slots.
+  for (const g of games) if (g.status === 'Pregame') bySport[g.sport].push(g)
 
   const bounded = (p: Promise<GameEdges[]>) => withTimeout(p, 20000, [] as GameEdges[])
   // College slates are long; analyse the ranked matchups first.

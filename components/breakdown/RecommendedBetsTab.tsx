@@ -93,7 +93,7 @@ export function RecommendedBetsTab({ sport, gameId, awayAbbr, homeAbbr }: { spor
             <div className="flex flex-col gap-2">
               <SectionTitle>Game Lines</SectionTitle>
               {lines.length === 0 ? (
-                <div className="rounded-[14px] border border-border bg-card px-4 py-8 text-center text-xs text-muted">Lines are not available for this game yet.</div>
+                <div className="rounded-[14px] border border-border bg-card px-4 py-8 text-center text-xs text-muted">{load.data.linesUnavailable ?? 'Lines are not available for this game yet.'}</div>
               ) : (
                 lines.map(([market, bets]) => (
                   <div key={market} className="flex flex-col gap-2">

@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { generateBetExplanation } from '@/lib/edges/explanationGenerator'
+import { BetAnalysis } from '@/components/breakdown/BetAnalysis'
+import { explainBet } from '@/lib/edges/explainBet'
 import { useAccountData } from '@/lib/account/AccountDataContext'
 import { formatOdds } from '@/lib/account/odds'
 import type { BetCardData } from '@/lib/edges/recommended'
@@ -83,35 +84,11 @@ const OPENS_BY_DEFAULT = new Set(['A', 'B', 'C'])
 export function BetCard({ bet, defaultOpen, showMatchup = false }: { bet: BetCardData; defaultOpen?: boolean; showMatchup?: boolean }) {
   const [open, setOpen] = useState(defaultOpen ?? (bet.grade !== null && OPENS_BY_DEFAULT.has(bet.grade)))
   const [showAll, setShowAll] = useState(false)
-  const [analysis, setAnalysis] = useState<{ state: 'closed' } | { state: 'loading' } | { state: 'open'; text: string }>({ state: 'closed' })
   const weak = bet.grade === 'D' || bet.grade === 'F'
   const visible = weak || showAll ? bet.insights : bet.insights.slice(0, 2)
   const { settings } = useAccountData()
   const { addLeg, removeByLineId, hasLine } = useParlay()
   const inParlay = hasLine(bet.leg.lineId)
-
-  /** Builds the written explanation from the evidence already on the card; a second tap collapses it. */
-  function toggleAnalysis() {
-    if (analysis.state !== 'closed') {
-      setAnalysis({ state: 'closed' })
-      return
-    }
-    const x = bet.explain
-    if (!x) return
-    setAnalysis({ state: 'loading' })
-    window.setTimeout(() => {
-      const text = generateBetExplanation(x.outcome, x.evidence, bet.convictionScore, bet.grade ?? 'F', x.context, {
-        description: bet.description,
-        conflicts: x.conflicts,
-        limitedSample: bet.limitedSample,
-        gradeNote: bet.gradeNote,
-        historicalHitRate: bet.historicalHitRate,
-        impliedProbability: x.impliedProbability,
-        isSharpFind: bet.isSharpFind,
-      })
-      setAnalysis({ state: 'open', text })
-    }, 180)
-  }
 
   function toggleParlay(e: React.MouseEvent) {
     e.stopPropagation()
@@ -172,22 +149,9 @@ export function BetCard({ bet, defaultOpen, showMatchup = false }: { bet: BetCar
               {showAll ? 'Show fewer insights ↑' : `Show all ${bet.insights.length} insights →`}
             </button>
           )}
+          {bet.explain && <BetAnalysis className="mt-3" text={() => explainBet(bet)} />}
           {bet.gradeNote && <p className={`mt-2 text-[10px] ${bet.grade === 'F' ? 'font-semibold text-text2' : 'text-muted'}`}>{bet.gradeNote}</p>}
           {bet.limitedSample && bet.grade !== 'F' && <p className="mt-2 text-[10px] text-warning">Limited sample: the main evidence rests on fewer than 10 games, so the grade is capped at C.</p>}
-          {analysis.state === 'loading' && <p className="mt-3 text-[11px] text-muted">Generating analysis...</p>}
-          {analysis.state === 'open' && (
-            <div className="mt-3 rounded-xl border border-accent/25 bg-accent/[0.06] p-2.5">
-              <div className="mb-1 text-[9px] font-extrabold tracking-[0.08em] text-accent">WRITTEN ANALYSIS</div>
-              <p className="text-[11px] leading-relaxed text-text2">{analysis.text}</p>
-            </div>
-          )}
-          {bet.explain && (
-            <div className="mt-2 flex justify-end">
-              <button onClick={toggleAnalysis} aria-expanded={analysis.state === 'open'} className="rounded-lg border border-border px-2 py-1 text-[10px] font-semibold text-muted transition-colors hover:border-accent/40 hover:text-accent">
-                📝 {analysis.state === 'open' ? 'Hide analysis' : 'Analysis'}
-              </button>
-            </div>
-          )}
         </div>
       )}
     </div>

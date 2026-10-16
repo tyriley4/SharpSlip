@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { BetAnalysis } from '@/components/breakdown/BetAnalysis'
 import { GradeBadge, InsightList, SharpFindBadge } from '@/components/breakdown/BetCard'
 import type { PlayerConviction, ThresholdConviction } from '@/lib/edges/playerEdge'
 import type { Sport } from '@/lib/sport/SportContext'
@@ -72,6 +73,7 @@ export function ConvictionSummary({ row, matchup }: { row: ThresholdConviction; 
         {row.limitedSample && <span className="text-[10px] font-semibold text-warning">Limited sample</span>}
       </div>
       {shown.length > 0 && <InsightList insights={shown} />}
+      {row.explanation && <BetAnalysis text={row.explanation} />}
       {row.insights.length > 2 && (
         <button onClick={() => setAll((v) => !v)} className="self-start text-[11px] font-semibold text-accent hover:underline">
           {all ? 'Show fewer insights ↑' : `View all ${row.insights.length} insights →`}

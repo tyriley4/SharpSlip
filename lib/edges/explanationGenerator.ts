@@ -61,50 +61,67 @@ function filterLabel(sport: string | undefined, n: number): string {
   return `Last ${k}`
 }
 
+/** The research tool that lets the reader check a window themselves: the player page filter, or the NFL game-tab time period. */
+function exploreNote(sport: string | undefined, k: number, o: Pick<BettingOutcome, 'type' | 'player'>): string {
+  if (o.type === 'player_prop' && o.player?.name) return `; explore this using the ${filterLabel(sport, k)} filter on ${o.player.name}'s player page`
+  if (sport === 'nfl') return `; explore this using the ${filterLabel(sport, k)} time period on the Passing, Rushing, Receiving and Defense tabs`
+  return ''
+}
+
+const subjectOf = (o: Pick<BettingOutcome, 'type' | 'player'>) => (o.type === 'player_prop' && o.player?.name ? o.player.name : null)
+
 /**
- * When a recent window differs sharply from the full season, say so with both numbers and name the filter that lets the
- * reader check the trend (the research tools on the player page, leaders and game tabs use the same windows).
+ * The time-window sentence: which window is the most predictive for this matchup and why, with the filter that lets the
+ * reader check it. A recent role expansion beats the season average; a recent window far from the season says so with both
+ * numbers; otherwise the longer record, the opponent-specific record or the season itself is named as the one to trust.
  */
-function contrastSentence(items: Edge[], sport: string | undefined, isPlayer: boolean): string | null {
+function windowSentence(items: Edge[], o: Pick<BettingOutcome, 'type' | 'player'>, sport: string | undefined, opp: string | undefined): string | null {
+  const who = subjectOf(o)
+  const name = who ?? 'the player'
+  const exp = items.find((e) => e.category === 'role' && /expan(ded|sion)/i.test(e.description) && !/cascade|across reception/i.test(e.description))
+  if (exp) {
+    const k = exp.metrics?.n ?? exp.sample ?? 4
+    return `The last ${k}-game window is more predictive here than the full season — ${who ? `${who}'s` : 'the'} role expanded over those games and the season average understates ${who ? 'their' : 'the'} current opportunity${exploreNote(sport, k, o)}.`
+  }
+  const rate = (e: Edge) => e.metrics?.rate as number
   const season = items.find((e) => horizonOf(e) === 'season' && e.metrics?.rate !== undefined)
   const windows = items.filter((e) => RECENT.includes(horizonOf(e)) && e.metrics?.rate !== undefined && (e.metrics?.n ?? 0) >= 4)
-  if (!season || windows.length === 0) return null
-  const w = windows.sort((a, b) => Math.abs((b.metrics!.rate as number) - (season.metrics!.rate as number)) - Math.abs((a.metrics!.rate as number) - (season.metrics!.rate as number)))[0]
-  const wr = w.metrics!.rate as number
-  const sr = season.metrics!.rate as number
-  if (Math.abs(wr - sr) < 0.1) return null
-  const n = w.metrics!.n as number
-  return `The last ${n}-game window shows ${pct(wr)} — notably ${wr > sr ? 'above' : 'below'} the full-season ${pct(sr)} — so explore this trend using the ${filterLabel(sport, n)} filter${isPlayer ? ' on the player page' : ''}.`
-}
-
-/** A recent role expansion outweighs older matchup data: say so, and say which window is the predictive one. */
-function expansionSentence(items: Edge[]): string | null {
-  const exp = items.find((e) => e.category === 'role' && /expan(ded|sion)/i.test(e.description) && !/cascade|across reception/i.test(e.description))
-  if (!exp) return null
-  const history = items.some((e) => ['career', 'career_vs_opp', 'recent_meetings'].includes(horizonOf(e)))
-  const n = exp.metrics?.n ?? exp.sample ?? 4
-  return `${history ? 'The career and head-to-head record is' : 'Older history is'} weighted less heavily here given the clear recent role expansion — the last ${n}-game window is the most predictive for tonight's specific situation.`
-}
-
-/** A sentence about which horizon is doing the work, grounded in the actual numbers when the evidence carries them. */
-function horizonSentence(items: Edge[], opp: string | undefined): string | null {
+  if (season && windows.length) {
+    const w = [...windows].sort((a, b) => Math.abs(rate(b) - rate(season)) - Math.abs(rate(a) - rate(season)))[0]
+    if (Math.abs(rate(w) - rate(season)) >= 0.1) {
+      const n = w.metrics!.n as number
+      return `The last ${n}-game window is the more predictive one here: it shows ${pct(rate(w))}, notably ${rate(w) > rate(season) ? 'above' : 'below'} the full-season ${pct(rate(season))}, because it reflects ${who ? 'current' : "the team's current"} form${exploreNote(sport, n, o)}.`
+    }
+  }
   const rates = (hs: Horizon[]) => items.filter((e) => hs.includes(horizonOf(e)) && e.metrics?.rate !== undefined)
   const recent = rates(RECENT)
   const longer = rates(['career', 'career_vs_opp'])
   if (recent.length && longer.length) {
     const r = recent.reduce((n, e) => n + (e.metrics!.rate as number), 0) / recent.length
     const c = longer.reduce((n, e) => n + (e.metrics!.rate as number), 0) / longer.length
-    if (r - c >= 0.1) return `While the longer-run rate is lower at ${pct(c)}, the recent rate of ${pct(r)} is more predictive because it reflects the current role and form.`
-    if (c - r >= 0.1) return `Recent results (${pct(r)}) trail the longer-run rate of ${pct(c)}, so the longer history carries more of the weight in this case.`
+    const k = Math.round(recent.reduce((n, e) => n + (e.metrics?.n ?? 5), 0) / recent.length)
+    if (r - c >= 0.1) return `The recent window is more predictive than the longer-run rate of ${pct(c)} — the recent rate of ${pct(r)} reflects the current role and form${exploreNote(sport, k, o)}.`
+    if (c - r >= 0.1) return `The longer history carries more of the weight here: recent results (${pct(r)}) trail the longer-run rate of ${pct(c)}, so the season-long window is the more reliable one${exploreNote(sport, 15, o)}.`
   }
   const specific = items.filter((e) => ['career_vs_opp', 'season_vs_opp', 'recent_meetings'].includes(horizonOf(e)))
-  if (specific.length && opp) return `The record against ${opp} counts for more than a general average because it is specific to tonight's matchup.`
+  if (specific.length && opp) return `The record against ${opp} counts for more than a general average because it is specific to tonight's matchup${who ? ` — see the vs This Opponent view on ${name}'s player page` : ''}.`
   const total = items.reduce((n, e) => n + strength(e), 0)
   if (total <= 0) return null
   const share = (g: Group[]) => items.filter((e) => g.includes(groupOf(horizonOf(e)))).reduce((n, e) => n + strength(e), 0) / total
-  if (share(['tonight', 'recent']) >= 0.6) return "Most of the weight sits on tonight's conditions and recent form rather than the long-run record."
-  if (share(['season', 'history']) >= 0.6) return 'Most of the weight sits on the season-long and historical record, with little in the short term pushing either way.'
+  if (share(['tonight', 'recent']) >= 0.6) return `Most of the weight sits on tonight's conditions and recent form, so the recent window is the one to trust over the long-run record${exploreNote(sport, 10, o)}.`
+  if (share(['season', 'history']) >= 0.6) return `The full season is the right window here: recent games do not diverge from it, so the season-long record carries the case${exploreNote(sport, 15, o)}.`
   return null
+}
+
+/** Player evidence is written without a subject ("has cleared Over 4.5 in 7 straight"); put the player's name in front of the verb. */
+function withSubject(t: string, o: Pick<BettingOutcome, 'type' | 'player'>): string {
+  const name = o.type === 'player_prop' ? o.player?.name : null
+  if (!name) return t
+  const lead = /^(against [^,]+|at home|on the road|in [^,]*games?[^,]*|earlier this season against [^:,]+),\s+(?=(has|have|cleared|averaging)\b)/i.exec(t)
+  const be = (rest: string) => (/^(averaging|playing)\b/i.test(rest) ? 'is ' : '')
+  if (lead) return t.slice(0, lead[0].length) + name + ' ' + be(t.slice(lead[0].length)) + t.slice(lead[0].length)
+  if (/^(has|have|cleared|averaging|playing|played|commands|holds)\b/i.test(t)) return name + ' ' + be(t) + t
+  return t
 }
 
 /** Drops a trailing "this season" when the sentence already opens with "Across this season,". */
@@ -129,41 +146,39 @@ export function generateBetExplanation(outcome: Pick<BettingOutcome, 'type' | 'd
   if (meta.limitedSample) notes.push('the main sample is under 10 games')
   if (gameContext.season.isPlayoffs) notes.push('playoff weighting leans on recent form and matchup-specific evidence over season-long trends')
   else if (gameContext.season.isEarlySeason || gameContext.priorSeasonOnly) notes.push('it is early in the season, so current-season samples are small and history carries more weight')
-  const uncertainty = notes.length ? ` Main uncertainty: ${notes.slice(0, 2).join('; ')}.` : ''
+  // Always close with the main uncertainty; when nothing specific stands out, say what any record cannot know.
+  if (notes.length === 0) notes.push("the evidence is a record of past results, and late lineup or injury news can still change tonight's setup")
+  const uncertainty = ` Main uncertainty: ${notes.slice(0, 2).join('; ')}.`
   const isProp = outcome.type === 'player_prop'
   const noOdds = !gameContext.hasOdds ? `, based on statistical evidence only because live ${isProp ? 'prop ' : ''}odds are not currently available` : ''
-  const sharp = meta.isSharpFind && meta.historicalHitRate !== null && meta.impliedProbability !== null ? `The historical rate of ${Math.round(meta.historicalHitRate)}% sits ${Math.round(meta.historicalHitRate - meta.impliedProbability)} points above the ${Math.round(meta.impliedProbability)}% the price implies, which is why this is flagged as a Sharp Find.` : null
-  const isPlayer = outcome.type === 'player_prop'
-  const expansion = items.length ? expansionSentence(items) : null
-  const horizon = items.length ? (expansion ?? horizonSentence(items, opp)) : null
-  const contrast = items.length ? contrastSentence(items, gameContext.sport, isPlayer) : null
+  const sharp = meta.isSharpFind && meta.historicalHitRate !== null && meta.impliedProbability !== null ? `, and the historical rate of ${Math.round(meta.historicalHitRate)}% sits ${Math.round(meta.historicalHitRate - meta.impliedProbability)} points above the ${Math.round(meta.impliedProbability)}% the price implies, which is why it is flagged as a Sharp Find` : ''
+  const windowNote = items.length ? windowSentence(items, outcome, gameContext.sport, opp) : null
 
   if (items.length === 0) {
     sentences.push(`There is not enough qualifying evidence to form a view on ${meta.description}, so the statistical case is thin either way.`)
   } else {
     const strong = grade === 'A' || grade === 'B' || grade === 'C'
     const order: Group[] = ['tonight', 'recent', 'season', 'history']
-    const room = 6 - 1 - (horizon ? 1 : 0) - (contrast ? 1 : 0) - (sharp ? 1 : 0) - (uncertainty ? 1 : 0)
+    // Five sentences at most: the picks, the window sentence, then the grade line and the main uncertainty.
+    const room = 5 - (windowNote ? 1 : 0) - 2
     const picked = order
       .map((g) => ({ g, e: items.find((e) => groupOf(horizonOf(e)) === g) }))
       .filter((x): x is { g: Group; e: Edge } => !!x.e)
       .sort((a, b) => strength(b.e) - strength(a.e))
-      .slice(0, Math.max(2, Math.min(3, room)))
+      .slice(0, Math.max(1, Math.min(3, room)))
       .sort((a, b) => order.indexOf(a.g) - order.indexOf(b.g))
     const OPEN: Record<Group, string> = { tonight: "starts with tonight's setup:", recent: 'starts with recent form:', season: "rests on this season's numbers:", history: 'rests on the historical record:' }
-    const text = (g: Group, e: Edge) => lower(clean(g === 'season' ? seasonTrim(clean(e.description)) : e.description))
+    const text = (g: Group, e: Edge) => withSubject(lower(clean(g === 'season' ? seasonTrim(clean(e.description)) : e.description)), outcome)
     picked.forEach((p, i) => {
       if (i === 0) sentences.push(`${strong ? `The statistical case for ${meta.description}` : `The evidence for ${meta.description} is limited and`} ${OPEN[p.g]} ${text(p.g, p.e)}.`)
       else sentences.push(`${LEAD[p.g]} ${text(p.g, p.e)}.`)
     })
-    if (picked.length < 2 && items.length > picked.length) {
+    if (picked.length < 2 && room >= 2 && items.length > picked.length) {
       const extra = items.find((e) => !picked.some((p) => p.e === e))
       if (extra) sentences.push(`Supporting that, ${lower(clean(extra.description))}.`)
     }
-    if (horizon) sentences.push(horizon)
-    if (contrast) sentences.push(contrast)
+    if (windowNote) sentences.push(windowNote)
   }
-  if (sharp) sentences.push(sharp)
-  sentences.push(`On the SharpSlip scale this grades ${grade} (conviction ${convictionScore.toFixed(2)})${noOdds}.${uncertainty}`)
+  sentences.push(`On the SharpSlip scale this grades ${grade} (conviction ${convictionScore.toFixed(2)})${noOdds}${sharp}.${uncertainty}`)
   return sentences.join(' ')
 }

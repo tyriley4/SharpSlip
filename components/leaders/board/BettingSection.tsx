@@ -184,6 +184,25 @@ export function BettingSection({
   return (
     <div className="flex flex-col gap-4">
       <BettingHeader count={rows.length} appliedMin={rank.appliedMin} career={career} />
+      {!ctx.isTeamRows && (
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={tonightOnly}
+            onClick={() => setTonightOnly((v) => !v)}
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] font-bold transition-colors ${tonightOnly ? 'border-accent bg-accent/15 text-accent' : 'border-border bg-card text-text2 hover:border-border2'}`}
+          >
+            <span aria-hidden="true" className={`relative inline-block h-4 w-7 rounded-full transition-colors ${tonightOnly ? 'bg-accent' : 'bg-border2'}`}>
+              <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${tonightOnly ? 'left-3.5' : 'left-0.5'}`} />
+            </span>
+            🌙 Tonight only
+          </button>
+          <span className="text-[10px] leading-snug text-muted">
+            {tonightOnly ? "Only players whose team plays today, ranked by tonight's conviction." : "Show only players with a game today, ranked by tonight's conviction."}
+          </span>
+        </div>
+      )}
       {windowBar}
       <div className="flex flex-col gap-1.5">
         {categoryPills}
@@ -191,7 +210,7 @@ export function BettingSection({
         {avgHitRate !== null && !loading && <p className="pl-1 text-[11px] text-muted">Avg hit rate: {avgHitRate}% across qualifying players</p>}
       </div>
 
-      <BettingControls sort={rank.sort} onSort={rank.setSort} minGames={rank.minGames} onMinGames={rank.setMinGames} relaxed={rank.relaxed} teams={ctx.isTeamRows} tonightOnly={tonightOnly} onTonightOnly={setTonightOnly} />
+      <BettingControls sort={rank.sort} onSort={rank.setSort} minGames={rank.minGames} onMinGames={rank.setMinGames} relaxed={rank.relaxed} teams={ctx.isTeamRows} />
 
       {tonightOnly && !tonightSet && !loading ? (
         <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card py-14 text-xs text-muted">

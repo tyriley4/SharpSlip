@@ -9,6 +9,7 @@ import { loadGameContext } from './data/gameContext'
 import { categoryForMarket, getPlayerHistory } from './data/playerHistory'
 import { loadHitterMatchup } from './data/mlbMatchup'
 import { evaluateWithContext } from './edgeEngine'
+import { generateBetExplanation } from './explanationGenerator'
 import type { BettingOutcome, EdgeCategory, Grade } from './types'
 
 export interface PlayerConvictionInsight {
@@ -27,6 +28,8 @@ export interface ThresholdConviction {
   limitedSample: boolean
   sampleSize: number
   insights: PlayerConvictionInsight[]
+  /** Written explanation of this threshold, for the Analysis control on the player page. */
+  explanation?: string
 }
 
 export interface PlayerConviction {
@@ -62,6 +65,8 @@ export async function findTeamGame(sport: Sport, team: string): Promise<{ oppone
   const home = g.home.abbr.toUpperCase() === abbr
   return { opponent: home ? g.away.abbr : g.home.abbr, home, href: g.href }
 }
+
+const formatAtLeast = (n: number) => `${n}+`
 
 export function lineForAtLeast(n: number): number {
   return Math.ceil(n) - 0.5
@@ -142,6 +147,14 @@ export async function getPlayerConviction(args: PlayerConvictionArgs): Promise<P
           limitedSample: r.limitedSample,
           sampleSize: r.sampleSize,
           insights: r.edges.map((e) => ({ description: e.description, category: e.category, supportingData: e.supportingData })),
+          explanation: generateBetExplanation(
+            { type: 'player_prop', direction: 'over', player: { name, team, position }, opponent },
+            r.edges,
+            r.convictionScore,
+            r.grade ?? 'F',
+            { season: ctx.season, hasOdds: odds !== undefined, priorSeasonOnly: ctx.priorSeasonOnly, away: ctx.away, home: ctx.home, sport },
+            { description: `${name} ${formatAtLeast(t)} ${category}`, conflicts: r.conflicts ?? 0, limitedSample: r.limitedSample, gradeNote: r.gradeNote, historicalHitRate: r.historicalHitRate, impliedProbability: implied !== undefined ? implied * 100 : null, isSharpFind: r.isSharpFind }
+          ),
         }
       })
 

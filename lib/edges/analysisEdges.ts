@@ -2,6 +2,7 @@ import type { Edge as LegacyEdge } from '@/data/breakdown/types'
 import type { Sport } from '@/lib/sport/SportContext'
 import type { EdgeCategory } from './types'
 export { ANALYSIS_CATEGORIES } from './analysisCategories'
+import { explainBet } from './explainBet'
 import { getRecommendedBets, type BetCardData } from './recommended'
 
 const ICON: Record<EdgeCategory, string> = { recent_form: '📈', hit_rate: '🎯', matchup: '🏈', situational: '⚠️', h2h: '🔄', context: '📊', role: '🧭' }
@@ -32,6 +33,7 @@ function toLegacy(b: BetCardData, id: number, away: string, home: string): Legac
       .map((i) => i.description)
       .join('. '),
     bullets: b.insights.slice(0, 4).map((i) => i.description),
+    explanation: explainBet(b) ?? undefined,
     market: b.odds !== null ? { oddsAmerican: b.odds, book: b.book ?? undefined, prob: b.impliedProbability ?? undefined, lineId: b.leg.lineId, matchup: b.matchup } : undefined,
   }
 }

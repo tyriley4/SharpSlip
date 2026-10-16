@@ -2,7 +2,9 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
+import { BetAnalysis } from '@/components/breakdown/BetAnalysis'
 import { GradeBadge, InsightList, SharpFindBadge } from '@/components/breakdown/BetCard'
+import { explainBet } from '@/lib/edges/explainBet'
 import { BestBetsDrawer } from '@/components/home/BestBetsDrawer'
 import { InjuryDrawer } from '@/components/home/InjuryDrawer'
 import { BaseCard } from '@/components/ui/Cards'
@@ -77,6 +79,7 @@ function BestBetCard({ bets, sportFilter }: { bets: TodayBet[]; sportFilter: Spo
           View full breakdown →
         </Link>
       </div>
+      {b.explain && <BetAnalysis className="mt-2" text={() => explainBet(b)} />}
       <p className="mt-2 text-[9px] leading-snug text-muted">Grades reflect statistical evidence and historical patterns, not a guarantee. Not betting advice.</p>
 
       {insightsOpen && (

@@ -6,6 +6,7 @@ import { MIN_QUALITY, qualityOf } from './evidenceFramework'
 import { horizonGroup, horizonOf } from './horizon'
 import { stageEvidenceMultipliers } from './historicalRates'
 import { synthesisFor } from './teamSynthesis'
+import { connectToTonight } from './tonight'
 import { contextModule } from './modules/context'
 import { h2hModule } from './modules/h2h'
 import { horizonsModule } from './modules/horizons'
@@ -69,13 +70,17 @@ export function evaluateWithContext(outcome: BettingOutcome, game: GameContext, 
   const historicalRate = primary ? primary.rate : null
   // Career stage: an ascending player's career is context and his current season leads; a declining veteran's career flatters him.
   const mult = stageEvidenceMultipliers(history?.stage?.stage)
-  const surfaced = edges
-    .filter((e) => qualityOf(e) >= MIN_QUALITY)
-    .map((e) => {
+  // Every surviving item is completed with why it matters tonight (pattern — tonight clause).
+  const surfaced = connectToTonight(
+    edges.filter((e) => qualityOf(e) >= MIN_QUALITY),
+    outcome,
+    game,
+    history
+  ).map((e) => {
       if (mult.current === 1 && mult.career === 1) return e
       const g = horizonGroup(horizonOf(e))
       return g === 'historical' ? { ...e, weight: e.weight * mult.career } : g === 'current' ? { ...e, weight: e.weight * mult.current } : e
-    })
+  })
   const hitSamples = surfaced.filter((e) => e.category === 'hit_rate').map((e) => e.sample ?? 0)
   const sampleSize = primary ? primary.games : hitSamples.length ? Math.max(...hitSamples) : 0
 

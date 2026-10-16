@@ -1,3 +1,4 @@
+import { BetAnalysis } from '@/components/breakdown/BetAnalysis'
 import { MatchupLinks } from '@/components/teams/MatchupLinks'
 import { CardOverlayLink } from '@/components/ui/CardOverlayLink'
 import { ConfBar } from '@/components/ui/ConfBar'
@@ -57,6 +58,7 @@ export function EdgeResultCard({
             </div>
           ))}
         </div>
+        {edge.explanation && <BetAnalysis className="pointer-events-auto relative z-10 mt-2.5" text={edge.explanation} stopPropagation />}
         <div className="mt-2.5 text-[11px] font-semibold text-accent">View Breakdown →</div>
       </GradeCard>
     </div>
