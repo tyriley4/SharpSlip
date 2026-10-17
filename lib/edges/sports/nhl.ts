@@ -1,6 +1,7 @@
 import { slugify } from '@/lib/players/slug'
 import type { ModuleInput } from '../modules/shared'
 import type { BettingOutcome, Edge, GameContext, ModuleOutput } from '../types'
+import { foundationEdges } from './foundationItems'
 import { ev, f1, lineText, ordinal, plural, recRelevance, recText } from './format'
 import { backToBackSplit, propName, recentAtLine, seasonAtLine, vsOpponentCareer } from './props'
 import { atVenue, avgAgainst, avgFor, covers, currentSeason, games as played, recentSeasons, totalSide, vsOpp, vsTier, wins, type Rec } from './records'
@@ -18,8 +19,14 @@ function goalieLine(g: NonNullable<NonNullable<GameContext['facts']['nhl']>['goa
   const saves = g.last5.reduce((n, x) => n + x.sv, 0)
   const shots = g.last5.reduce((n, x) => n + x.sa, 0)
   const last = g.last5SvPct as number
-  const season = Math.abs(last - g.seasonSavePct) < 0.003 ? ', matching his season mark' : ` against a ${sv(g.seasonSavePct)} season mark`
+  const season = ` against a ${sv(g.seasonSavePct)} season mark${Math.abs(last - g.seasonSavePct) < 0.003 ? ' (steady)' : last > g.seasonSavePct ? ' (running hot)' : ' (running cold)'}`
   return `${g.name} has stopped ${saves} of ${shots} shots (${sv(last)}) over his last ${g.last5.length} starts${season}`
+}
+
+/** What a goalie did last night, when he played: the shots faced and saves made. */
+function lastNight(g: NonNullable<NonNullable<GameContext['facts']['nhl']>['goalies']['away']>): string {
+  const l = g.last5[0]
+  return g.startedYesterday && l ? `${g.name} faced ${l.sa} shots last night (${l.sv} saves vs ${l.opp})` : ''
 }
 
 function nhlSide({ outcome: o, game }: ModuleInput): ModuleOutput {
@@ -43,10 +50,10 @@ function nhlSide({ outcome: o, game }: ModuleInput): ModuleOutput {
   const gO = facts?.goalies[theirs]
   const gT = facts?.goalies[mine]
   if (gO?.last5SvPct != null) {
-    if (gO.last5SvPct <= 0.895) push(ev({ tier: 1, text: `${O}'s likely starter ${goalieLine(gO)}${gO.startedYesterday ? ' and played last night, so a backup may start' : ''} — a goalie ${T} can score on tonight`, category: 'matchup', horizon: 'last15', layer: 'opportunity', relevance: Math.min(1, 0.55 + (0.91 - gO.last5SvPct) * 6), support: gO.last5.map((r) => `${r.sv}/${r.sa} vs ${r.opp}`).join(' · '), n: gO.last5.length, ageDays: 3, metrics: { rate: gO.last5SvPct, n: gO.last5.length } }))
+    if (gO.last5SvPct <= 0.895) push(ev({ tier: 1, text: `${O}'s likely starter ${goalieLine(gO)}${gO.startedYesterday ? `; ${lastNight(gO)}, so a backup may start` : ''} — a goalie ${T} can score on tonight`, category: 'matchup', horizon: 'last15', layer: 'opportunity', relevance: Math.min(1, 0.55 + (0.91 - gO.last5SvPct) * 6), support: gO.last5.map((r) => `${r.sv}/${r.sa} vs ${r.opp}`).join(' · '), n: gO.last5.length, ageDays: 3, metrics: { rate: gO.last5SvPct, n: gO.last5.length } }))
     else if (gO.last5SvPct >= 0.925) conflicts++
   } else if (gO?.startedYesterday) {
-    push(ev({ tier: 1, text: `${O}'s likely starter ${gO.name} played last night, so a backup goalie may be in net against ${T} tonight`, category: 'situational', horizon: 'tonight', layer: 'situational', relevance: 0.45, support: 'Goalie game log', n: 1, ageDays: 0 }))
+    push(ev({ tier: 1, text: `${O}'s likely starter ${lastNight(gO) || gO.name + ' played last night'}, so a backup goalie may be in net against ${T} tonight (${gO.name} is ${sv(gO.seasonSavePct)} on the season)`, category: 'situational', horizon: 'tonight', layer: 'situational', relevance: 0.45, support: 'Goalie game log', n: 1, ageDays: 0 }))
   }
   if (gT?.last5SvPct != null && gT.last5SvPct >= 0.925) {
     push(ev({ tier: 1, text: `${T}'s likely starter ${goalieLine(gT)} — the goaltending behind ${T} tonight`, category: 'matchup', horizon: 'last15', layer: 'opportunity', relevance: Math.min(1, 0.5 + (gT.last5SvPct - 0.91) * 6), support: gT.last5.map((r) => `${r.sv}/${r.sa} vs ${r.opp}`).join(' · '), n: gT.last5.length, ageDays: 3, metrics: { rate: gT.last5SvPct, n: gT.last5.length } }))
@@ -54,32 +61,32 @@ function nhlSide({ outcome: o, game }: ModuleInput): ModuleOutput {
   const r1 = game.rest[T]
   const r2 = game.rest[O]
   if (r1 !== null && r1 !== undefined && r2 !== null && r2 !== undefined) {
-    if (r2 === 0 && r1 >= 1) push(ev({ tier: 1, text: `${O} is on the second night of a back-to-back tonight while ${T} has had ${plural(r1, 'day')} off`, category: 'situational', horizon: 'tonight', layer: 'situational', relevance: 0.7, support: 'Days since each team last played', n: 1, ageDays: 0 }))
+    if (r2 === 0 && r1 >= 1) push(ev({ tier: 1, text: `${O} is on the second night of a back-to-back tonight (0 days of rest) vs ${plural(r1, 'day')} of rest for ${T}${gO ? ` — ${lastNight(gO) || `${gO.name} is the likely starter`}, and ${gO.name} is ${sv(gO.seasonSavePct)} on the season` : ''}`, category: 'situational', horizon: 'tonight', layer: 'situational', relevance: 0.7, support: 'Days since each team last played', n: 1, ageDays: 0 }))
     else if (r1 === 0 && r2 >= 1) conflicts++
   }
-  const outT = game.teammatesOut.filter((x) => x.team === O && x.usage && x.usage.value >= 16)
-  const outMine = game.teammatesOut.filter((x) => x.team === T && x.usage && x.usage.value >= 16)
-  if (outT.length > 0) push(ev({ tier: 1, text: `${O} is without ${outT.slice(0, 2).map((x) => `${x.player} (${x.position}, ${x.usage!.value} minutes of ice time per game)`).join(' and ')} tonight — a regular from the lineup missing against ${T}`, category: 'situational', horizon: 'tonight', layer: 'situational', relevance: Math.min(1, 0.5 + outT.length * 0.1), support: 'Injury report with ice-time averages', n: outT.length, ageDays: 0 }))
-  if (outMine.length > 0) conflicts++
+
+  const fnd = foundationEdges(o, game)
+  edges.push(...fnd.edges)
+  conflicts += fnd.conflicts
 
   // ---- Tier 2: special teams, and this team's record against this opponent.
   const sMine = facts?.special[T]
   const sTheirs = facts?.special[O]
   if (sMine && sTheirs) {
     const edge = sMine.ppPct - (100 - sTheirs.pkPct)
-    if (edge >= 3 || (sMine.ppRank <= sMine.of / 3 && sTheirs.pkRank > (sTheirs.of * 2) / 3)) {
-      push(ev({ tier: 2, text: `${T}'s power play converts ${f1(sMine.ppPct)}% (${ordinal(sMine.ppRank)} of ${sMine.of}); ${O}'s penalty kill allows ${f1(100 - sTheirs.pkPct)}% (kills ${f1(sTheirs.pkPct)}%, ${ordinal(sTheirs.pkRank)} of ${sTheirs.of}) — a ${f1(Math.abs(edge))}-point ${edge >= 0 ? 'edge for ' + T + "'s power play" : 'gap'} tonight`, category: 'matchup', horizon: 'tonight', layer: 'opportunity', relevance: Math.min(1, 0.5 + Math.max(0, edge) / 20), support: 'Team special teams this season', n: sMine.of }))
-    } else if (edge <= -6) conflicts++
+    if (sMine.ppRank <= sMine.of / 2 && sTheirs.pkRank > sTheirs.of / 2) {
+      push(ev({ tier: 2, text: `${T}'s power play converts ${f1(sMine.ppPct)}% (${ordinal(sMine.ppRank)} of ${sMine.of}); ${O}'s penalty kill allows ${f1(100 - sTheirs.pkPct)}% (kills ${f1(sTheirs.pkPct)}%, ${ordinal(sTheirs.pkRank)} of ${sTheirs.of}) — a ${f1(Math.abs(edge))}-point differential in ${T}'s favor (power-play conversion ${f1(sMine.ppPct)}% vs the ${f1(100 - sTheirs.pkPct)}% the penalty kill allows), a special-teams edge tonight`, category: 'matchup', horizon: 'tonight', layer: 'opportunity', relevance: Math.min(1, 0.5 + Math.max(0, edge) / 20), support: 'Team special teams this season', n: sMine.of }))
+    } else if (sMine.ppRank > sMine.of / 2 && sTheirs.pkRank <= sTheirs.of / 3) conflicts++
   }
   const cur = currentSeason(game, T)
   const vsThis = vsOpp(cur, O)
   const rv = tally(vsThis)
   if (played(rv) >= 2 && rv.w / played(rv) >= 0.6) {
-    push(ev({ tier: 2, text: `${T}'s ${recWord} vs ${O} this season: ${recText(rv)} (${plural(vsThis.length, 'meeting')})`, category: 'h2h', horizon: 'season_vs_opp', relevance: recRelevance(rv.w, rv.l), support: `${vsThis.length} games`, n: vsThis.length, smallSample: vsThis.length < 3 }))
+    push(ev({ tier: 2, text: `${T}'s ${recWord} vs ${O} this season: ${recText(rv)} (${plural(vsThis.length, 'meeting')}) vs ${recText(tally(currentSeason(game, T)))} across all games — ${O} is tonight's opponent`, category: 'h2h', horizon: 'season_vs_opp', relevance: recRelevance(rv.w, rv.l), support: `${vsThis.length} games`, n: vsThis.length, smallSample: vsThis.length < 3 }))
   } else if (played(rv) >= 3 && rv.w / played(rv) <= 0.34) conflicts++
   const prior = recentSeasons(game, T, 2).filter((g) => g.opp === O && !g.playoff)
   const pr = tally(prior)
-  if (played(pr) >= 4 && pr.w / played(pr) >= 0.7) push(ev({ tier: 6, text: `${T}'s ${recWord} vs ${O} over the last two seasons: ${recText(pr)}`, category: 'h2h', horizon: 'career_vs_opp', relevance: recRelevance(pr.w, pr.l), support: 'Two most recent seasons', n: played(pr), seasonsAgo: 1 }))
+  if (played(pr) >= 4 && pr.w / played(pr) >= 0.7) push(ev({ tier: 6, text: `${T}'s ${recWord} vs ${O} over the last two seasons: ${recText(pr)} vs ${recText(tally(cur))} across all games this season — tonight's opponent`, category: 'h2h', horizon: 'career_vs_opp', relevance: recRelevance(pr.w, pr.l), support: 'Two most recent seasons', n: played(pr), seasonsAgo: 1 }))
 
   // ---- Tier 3: goals for and against over the last ten, each team separately.
   const a10 = (game.results[T] ?? []).slice(0, 10)
@@ -93,16 +100,16 @@ function nhlSide({ outcome: o, game }: ModuleInput): ModuleOutput {
 
   // ---- Tier 4: the record at tonight's number in tonight's situation.
   const venue = tally(atVenue(cur, home))
-  if (played(venue) >= 4 && venue.w / played(venue) >= 0.6) push(ev({ tier: 4, text: `${T}'s ${recWord} ${home ? 'at home' : 'on the road'} this season: ${recText(venue)}`, category: 'hit_rate', horizon: 'season', relevance: recRelevance(venue.w, venue.l), support: `${home ? 'Home' : 'Road'} games`, n: played(venue), smallSample: played(venue) < 8 }))
+  if (played(venue) >= 4 && venue.w / played(venue) >= 0.6) push(ev({ tier: 4, text: `${T}'s ${recWord} ${home ? 'at home' : 'on the road'} this season: ${recText(venue)}${played(tally(atVenue(cur, !home))) >= 4 ? ` vs ${recText(tally(atVenue(cur, !home)))} ${home ? 'on the road' : 'at home'}` : ` vs ${recText(tally(cur))} across all games`} — tonight is a ${home ? 'home' : 'road'} game`, category: 'hit_rate', horizon: 'season', relevance: recRelevance(venue.w, venue.l), support: `${home ? 'Home' : 'Road'} games`, n: played(venue), smallSample: played(venue) < 8 }))
   const oppPct = game.leagueWinPct[O]
   if (oppPct !== undefined) {
     const strong = oppPct >= 0.5
     const r = tally(vsTier(cur, game, strong))
-    if (played(r) >= 3 && r.w / played(r) >= 0.62) push(ev({ tier: 4, text: `${T}'s ${recWord} vs teams ${strong ? 'at or above' : 'under'} .500 this season: ${recText(r)} — ${O} is at ${oppPct.toFixed(3).replace(/^0/, '')}`, category: 'hit_rate', horizon: 'season', relevance: recRelevance(r.w, r.l), support: 'Opponent quality from the standings', n: played(r), smallSample: played(r) < 8 }))
+    if (played(r) >= 3 && r.w / played(r) >= 0.62) push(ev({ tier: 4, text: `${T}'s ${recWord} vs teams ${strong ? 'at or above' : 'under'} .500 this season: ${recText(r)}${played(tally(vsTier(cur, game, !strong))) >= 3 ? ` vs ${recText(tally(vsTier(cur, game, !strong)))} against teams ${strong ? 'under' : 'at or above'} .500` : ''} — ${O} is at ${oppPct.toFixed(3).replace(/^0/, '')} tonight`, category: 'hit_rate', horizon: 'season', relevance: recRelevance(r.w, r.l), support: 'Opponent quality from the standings', n: played(r), smallSample: played(r) < 8 }))
   }
   if (spread) {
     const mirror = covers(atVenue(currentSeason(game, O), !home), -line)
-    if (played(mirror) >= 4 && mirror.w / played(mirror) <= 0.38) push(ev({ tier: 4, text: `${O}'s record covering ${lineText(-line)} ${!home ? 'at home' : 'on the road'} this season: ${recText(mirror)} — the number ${O} has to cover tonight`, category: 'hit_rate', horizon: 'season', relevance: Math.min(1, 0.45 + (0.5 - mirror.w / played(mirror))), support: `${O}'s ${!home ? 'home' : 'road'} games`, n: played(mirror), smallSample: played(mirror) < 8 }))
+    if (played(mirror) >= 4 && mirror.w / played(mirror) <= 0.38) push(ev({ tier: 4, text: `${O}'s record covering ${lineText(-line)} ${!home ? 'at home' : 'on the road'} this season: ${recText(mirror)}${played(covers(atVenue(currentSeason(game, O), home), -line)) >= 4 ? ` vs ${recText(covers(atVenue(currentSeason(game, O), home), -line))} ${home ? 'at home' : 'on the road'}` : ` vs ${recText(covers(currentSeason(game, O), -line))} across all games`} — the number ${O} has to cover tonight`, category: 'hit_rate', horizon: 'season', relevance: Math.min(1, 0.45 + (0.5 - mirror.w / played(mirror))), support: `${O}'s ${!home ? 'home' : 'road'} games`, n: played(mirror), smallSample: played(mirror) < 8 }))
   }
   return { edges, conflicts }
 }
@@ -126,23 +133,24 @@ function nhlTotal({ outcome: o, game }: ModuleInput): ModuleOutput {
     const bothWeak = ga.last5SvPct <= 0.9 && gh.last5SvPct <= 0.9
     const bothSharp = ga.last5SvPct >= 0.92 && gh.last5SvPct >= 0.92
     if ((over && bothWeak) || (!over && bothSharp)) {
-      push(ev({ tier: 1, text: `${A}'s ${ga.name}: ${sv(ga.last5SvPct)} over his last ${ga.last5.length} starts; ${H}'s ${gh.name}: ${sv(gh.last5SvPct)} over his last ${gh.last5.length} — ${over ? 'neither goalie has been stopping the puck' : 'both goalies have been sharp'} going into tonight's ${total}`, category: 'recent_form', horizon: 'last15', layer: 'statistical', relevance: 0.62, support: `${ga.name}: ${ga.last5.map((r) => `${r.sv}/${r.sa}`).join(', ')} · ${gh.name}: ${gh.last5.map((r) => `${r.sv}/${r.sa}`).join(', ')}`, n: Math.min(ga.last5.length, gh.last5.length), ageDays: 3 }))
+      push(ev({ tier: 1, text: `${A}'s ${ga.name}: ${sv(ga.last5SvPct)} over his last ${ga.last5.length} starts vs ${sv(ga.seasonSavePct)} on the season; ${H}'s ${gh.name}: ${sv(gh.last5SvPct)} over his last ${gh.last5.length} vs ${sv(gh.seasonSavePct)} — ${over ? 'neither goalie has been stopping the puck' : 'both goalies have been sharp'} going into tonight's ${total}`, category: 'recent_form', horizon: 'last15', layer: 'statistical', relevance: 0.62, support: `${ga.name}: ${ga.last5.map((r) => `${r.sv}/${r.sa}`).join(', ')} · ${gh.name}: ${gh.last5.map((r) => `${r.sv}/${r.sa}`).join(', ')}`, n: Math.min(ga.last5.length, gh.last5.length), ageDays: 3 }))
     } else if ((over && bothSharp) || (!over && bothWeak)) conflicts++
   }
   const b2b = ([A, H] as const).filter((x) => game.rest[x] === 0)
-  if (over && b2b.length > 0) push(ev({ tier: 1, text: `${b2b.join(' and ')} ${b2b.length > 1 ? 'are' : 'is'} on the second night of a back-to-back tonight — tired legs and backup goaltending raise scoring against the ${total}`, category: 'situational', horizon: 'tonight', layer: 'situational', relevance: 0.55, support: 'Days since each team last played', n: b2b.length, ageDays: 0 }))
-  const stars = game.teammatesOut.filter((x) => x.usage && x.usage.value >= 16 && x.position.toUpperCase() !== 'G')
-  if (!over && stars.length > 0) push(ev({ tier: 1, text: `${stars.slice(0, 2).map((x) => `${x.team} is without ${x.player} (${x.position}, ${x.usage!.value} minutes per game)`).join('; ')} — a regular out of the lineup trims scoring against the ${total}`, category: 'situational', horizon: 'tonight', layer: 'situational', relevance: 0.5, support: 'Injury report with ice-time averages', n: stars.length, ageDays: 0 }))
-  else if (over && stars.length > 0) conflicts++
+  if (over && b2b.length > 0) push(ev({ tier: 1, text: `${b2b.join(' and ')} ${b2b.length > 1 ? 'are' : 'is'} on the second night of a back-to-back tonight${b2b.map((x) => { const g = facts?.goalies[x === A ? 'away' : 'home']; return g && g.startedYesterday ? ` — ${lastNight(g)}, and ${g.name} is ${sv(g.seasonSavePct)} on the season` : '' }).join('')} — tired legs and backup goaltending raise scoring against the ${total}`, category: 'situational', horizon: 'tonight', layer: 'situational', relevance: 0.55, support: 'Days since each team last played', n: b2b.length, ageDays: 0 }))
+
+  const fnd = foundationEdges(o, game)
+  edges.push(...fnd.edges)
+  conflicts += fnd.conflicts
 
   // ---- Tier 2: special teams, each side.
   const sa = facts?.special[A]
   const sh = facts?.special[H]
   if (sa && sh) {
-    const aEdge = sa.ppPct - (100 - sh.pkPct)
-    const hEdge = sh.ppPct - (100 - sa.pkPct)
-    if (over && aEdge >= 2 && hEdge >= 2) push(ev({ tier: 2, text: `${A}'s power play converts ${f1(sa.ppPct)}% against ${H}'s ${f1(sh.pkPct)}% penalty kill; ${H}'s power play converts ${f1(sh.ppPct)}% against ${A}'s ${f1(sa.pkPct)}% kill — both power plays have the edge tonight`, category: 'matchup', horizon: 'tonight', layer: 'opportunity', relevance: 0.55, support: 'Team special teams this season', n: sa.of }))
-    else if (!over && aEdge <= -4 && hEdge <= -4) push(ev({ tier: 2, text: `${A}'s power play converts ${f1(sa.ppPct)}% against ${H}'s ${f1(sh.pkPct)}% penalty kill; ${H}'s converts ${f1(sh.ppPct)}% against ${A}'s ${f1(sa.pkPct)}% — both penalty kills have the edge tonight`, category: 'matchup', horizon: 'tonight', layer: 'opportunity', relevance: 0.5, support: 'Team special teams this season', n: sa.of }))
+    const ppOver = (p: typeof sa, k: typeof sh) => !!p && !!k && p.ppRank <= p.of / 2 && k.pkRank > k.of / 2
+    const ppUnder = (p: typeof sa, k: typeof sh) => !!p && !!k && p.ppRank > p.of / 2 && k.pkRank <= k.of / 2
+    if (over && ppOver(sa, sh) && ppOver(sh, sa)) push(ev({ tier: 2, text: `${A}'s power play converts ${f1(sa.ppPct)}% (${ordinal(sa.ppRank)} of ${sa.of}) against ${H}'s ${f1(sh.pkPct)}% penalty kill (${ordinal(sh.pkRank)}); ${H}'s power play converts ${f1(sh.ppPct)}% (${ordinal(sh.ppRank)}) against ${A}'s ${f1(sa.pkPct)}% kill (${ordinal(sa.pkRank)}) — both power plays hold the edge in tonight's game`, category: 'matchup', horizon: 'tonight', layer: 'opportunity', relevance: 0.55, support: 'Team special teams this season', n: sa.of }))
+    else if (!over && ppUnder(sa, sh) && ppUnder(sh, sa)) push(ev({ tier: 2, text: `${A}'s power play converts ${f1(sa.ppPct)}% (${ordinal(sa.ppRank)} of ${sa.of}) against ${H}'s ${f1(sh.pkPct)}% penalty kill (${ordinal(sh.pkRank)}); ${H}'s converts ${f1(sh.ppPct)}% (${ordinal(sh.ppRank)}) against ${A}'s ${f1(sa.pkPct)}% kill (${ordinal(sa.pkRank)}) — both penalty kills hold the edge in tonight's game`, category: 'matchup', horizon: 'tonight', layer: 'opportunity', relevance: 0.5, support: 'Team special teams this season', n: sa.of }))
   }
 
   // ---- Tier 3: recent scoring, each team separately, then the combined summary.
@@ -151,18 +159,18 @@ function nhlTotal({ outcome: o, game }: ModuleInput): ModuleOutput {
   if (a10.length >= 5 && h10.length >= 5) {
     const combined = avgFor(a10) + avgFor(h10)
     const gap = combined - total
-    if ((over && gap >= 0.4) || (!over && gap <= -0.4)) push(ev({ tier: 3, text: `${A}: scoring ${f1(avgFor(a10))} goals per game and allowing ${f1(avgAgainst(a10))} over the last ${a10.length}; ${H}: scoring ${f1(avgFor(h10))} and allowing ${f1(avgAgainst(h10))} over the last ${h10.length} — combined ${f1(combined)} against tonight's ${total} line`, category: 'recent_form', horizon: 'last15', relevance: Math.min(1, 0.45 + Math.abs(gap) / 2), support: 'Final scores, last ten games each', n: Math.min(a10.length, h10.length), ageDays: 3 }))
+    if ((over && gap >= 0.4) || (!over && gap <= -0.4)) push(ev({ tier: 3, text: `${A}: scoring ${f1(avgFor(a10))} goals per game and allowing ${f1(avgAgainst(a10))} over the last ${a10.length}; ${H}: scoring ${f1(avgFor(h10))} and allowing ${f1(avgAgainst(h10))} over the last ${h10.length} (season averages: ${f1(avgFor(currentSeason(game, A)))} scored by ${A}, ${f1(avgFor(currentSeason(game, H)))} by ${H}) — combined ${f1(combined)} over the stretch against tonight's ${total} line`, category: 'recent_form', horizon: 'last15', relevance: Math.min(1, 0.45 + Math.abs(gap) / 2), support: 'Final scores, last ten games each', n: Math.min(a10.length, h10.length), ageDays: 3 }))
     else if ((over && gap <= -0.4) || (!over && gap >= 0.4)) conflicts++
     const ra = totalSide(a10, total, over)
     const rh = totalSide(h10, total, over)
-    if ((ra.w + rh.w) / Math.max(1, played(ra) + played(rh)) >= 0.62) push(ev({ tier: 3, text: `${A}: ${word} ${total} in ${ra.w} of the last ${played(ra) + ra.p} games; ${H}: ${word} ${total} in ${rh.w} of the last ${played(rh) + rh.p}`, category: 'recent_form', horizon: 'last15', relevance: recRelevance(ra.w + rh.w, played(ra) + played(rh) - ra.w - rh.w), support: 'Final scores against tonight\'s number', n: Math.min(played(ra), played(rh)), ageDays: 3, metrics: { rate: (ra.w + rh.w) / (played(ra) + played(rh)), n: played(ra) } }))
+    if ((ra.w + rh.w) / Math.max(1, played(ra) + played(rh)) >= 0.62) push(ev({ tier: 3, text: `${A}: ${word} ${total} in ${ra.w} of the last ${played(ra) + ra.p} games vs ${totalSide(currentSeason(game, A), total, over).w} of ${currentSeason(game, A).length} on the season; ${H}: ${word} ${total} in ${rh.w} of the last ${played(rh) + rh.p} vs ${totalSide(currentSeason(game, H), total, over).w} of ${currentSeason(game, H).length} — each team's own record against tonight's number`, category: 'recent_form', horizon: 'last15', relevance: recRelevance(ra.w + rh.w, played(ra) + played(rh) - ra.w - rh.w), support: 'Final scores against tonight\'s number', n: Math.min(played(ra), played(rh)), ageDays: 3, metrics: { rate: (ra.w + rh.w) / (played(ra) + played(rh)), n: played(ra) } }))
   }
   // ---- Tier 4: season records at the number, then the venues.
   const cA = currentSeason(game, A)
   const cH = currentSeason(game, H)
   const sA = totalSide(cA, total, over)
   const sH = totalSide(cH, total, over)
-  if (cA.length >= 4 && cH.length >= 4 && (sA.w + sH.w) / Math.max(1, played(sA) + played(sH)) >= 0.6) push(ev({ tier: 4, text: `${A}: ${word} ${total} in ${sA.w} of ${cA.length} games this season; ${H}: ${word} ${total} in ${sH.w} of ${cH.length}`, category: 'hit_rate', horizon: 'season', relevance: recRelevance(sA.w + sH.w, played(sA) + played(sH) - sA.w - sH.w), support: 'Final scores this season', n: Math.min(cA.length, cH.length), smallSample: Math.min(cA.length, cH.length) < 10 }))
+  if (cA.length >= 4 && cH.length >= 4 && (sA.w + sH.w) / Math.max(1, played(sA) + played(sH)) >= 0.6) push(ev({ tier: 4, text: `${A}: ${word} ${total} in ${sA.w} of ${cA.length} games this season; ${H}: ${word} ${total} in ${sH.w} of ${cH.length} — each against tonight's ${total} number`, category: 'hit_rate', horizon: 'season', relevance: recRelevance(sA.w + sH.w, played(sA) + played(sH) - sA.w - sH.w), support: 'Final scores this season', n: Math.min(cA.length, cH.length), smallSample: Math.min(cA.length, cH.length) < 10 }))
   const vA = totalSide(atVenue(cA, false), total, over)
   const vH = totalSide(atVenue(cH, true), total, over)
   if (played(vA) >= 3 && played(vH) >= 3 && (vA.w + vH.w) / (played(vA) + played(vH)) >= 0.65) push(ev({ tier: 4, text: `${A} on the road: ${word} ${total} in ${vA.w} of ${played(vA) + vA.p} games; ${H} at home: ${word} ${total} in ${vH.w} of ${played(vH) + vH.p} — the venues for tonight's game`, category: 'hit_rate', horizon: 'season', relevance: 0.55, support: 'Road games for the visitor, home games for the host', n: Math.min(played(vA), played(vH)), smallSample: true }))
@@ -188,14 +196,14 @@ function nhlProp({ outcome: o, game, history }: ModuleInput): ModuleOutput {
   const points = o.category === 'Points' || o.category === 'Assists'
 
   // ---- Tier 1: the goalie he shoots at, then the second night of a back-to-back, then his power-play role.
-  const g = facts?.goalies[oppSide]
+  const g = o.category === 'Shots on Goal' ? undefined : facts?.goalies[oppSide]
   if (g?.last5SvPct != null) {
     const weak = g.last5SvPct <= 0.895
     const strong = g.last5SvPct >= 0.925
-    if ((over && weak) || (!over && strong)) push(ev({ tier: 1, text: `${O}'s likely starter ${goalieLine(g)}${g.startedYesterday ? ' and played last night, so a backup may start' : ''} — the goalie ${name} faces tonight`, category: 'matchup', horizon: 'last15', layer: 'opportunity', relevance: Math.min(1, 0.5 + Math.abs(g.last5SvPct - 0.91) * 8), support: g.last5.map((r) => `${r.sv}/${r.sa} vs ${r.opp}`).join(' · '), n: g.last5.length, ageDays: 3, metrics: { rate: g.last5SvPct, n: g.last5.length } }))
+    if ((over && weak) || (!over && strong)) push(ev({ tier: 1, text: `${O}'s likely starter ${goalieLine(g)}${g.startedYesterday ? `; ${lastNight(g)}, so a backup may start` : ''} — the goalie ${name} faces tonight`, category: 'matchup', horizon: 'last15', layer: 'opportunity', relevance: Math.min(1, 0.5 + Math.abs(g.last5SvPct - 0.91) * 8), support: g.last5.map((r) => `${r.sv}/${r.sa} vs ${r.opp}`).join(' · '), n: g.last5.length, ageDays: 3, metrics: { rate: g.last5SvPct, n: g.last5.length } }))
     else if ((over && strong) || (!over && weak)) conflicts++
   } else if (g?.startedYesterday && over) {
-    push(ev({ tier: 1, text: `${O}'s likely starter ${g.name} played last night, so a backup goalie may face ${name} tonight`, category: 'situational', horizon: 'tonight', layer: 'situational', relevance: 0.45, support: 'Goalie game log', n: 1, ageDays: 0 }))
+    push(ev({ tier: 1, text: `${O}'s likely starter ${lastNight(g) || g.name + ' played last night'}, so a backup goalie may face ${name} tonight (${g.name} is ${sv(g.seasonSavePct)} on the season)`, category: 'situational', horizon: 'tonight', layer: 'situational', relevance: 0.45, support: 'Goalie game log', n: 1, ageDays: 0 }))
   }
   if (game.rest[T] === 0) {
     const sp = backToBackSplit(o, history)

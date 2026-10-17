@@ -82,12 +82,45 @@ export interface DepthFacts {
   slots: Record<string, string>
 }
 
+/** One game against a defense: what its opponent's skill players did (the quality of that opponent is joined later). */
+export interface DefGame {
+  week: number
+  /** The offense that played this defense. */
+  opp: string
+  wr1Name: string
+  wr1Yds: number
+  wr1Rec: number
+  wr1Targets: number
+  teYds: number
+  rbRush: number
+  qbPass: number
+}
+
+/** A team's offense in one week: how it split passing and running, and what it gained either way. */
+export interface TeamWeek {
+  week: number
+  opp: string
+  att: number
+  carries: number
+  passYds: number
+  rushYds: number
+}
+
 export interface NflGameFacts {
   season: number
   weeks: number
   players: Record<string, NflPlayerFacts>
   vsPosition: Record<string, VsPosition>
   depth: Record<string, DepthFacts | null>
+  /** Every defense's games (for "against winning teams" splits) and its average WR1 yards allowed, ranked (1 = most). */
+  defGames: Record<string, DefGame[]>
+  wr1Allowed: Record<string, { yds: number; rank: number; of: number; games: number }>
+  /** Pass share of plays by team over the season, ranked (1 = most pass-heavy), and each team's weeks (ascending). */
+  teamStyle: Record<string, { passPct: number; plays: number; rank: number; of: number }>
+  teamWeeks: Record<string, TeamWeek[]>
+  /** Who started at quarterback each week (most attempts), and the team's main quarterback for the season. */
+  qbStarters: Record<string, Record<number, { name: string; mainPlayed: boolean }>>
+  qbMain: Record<string, string>
 }
 
 type Row = Record<string, string>
@@ -216,6 +249,87 @@ async function loadDepth(abbr: string): Promise<DepthFacts | null> {
   })
 }
 
+/** Per-defense game list and WR1 yards allowed, from the same weekly rows. WR1 is the opposing receiver with the most targets that week. */
+function buildDefenseGames(rows: Row[]): { defGames: Record<string, DefGame[]>; wr1Allowed: NflGameFacts['wr1Allowed'] } {
+  type Cell = { def: string; opp: string; week: number; wr: { name: string; yds: number; rec: number; targets: number } | null; teYds: number; rbRush: number; qbPass: number }
+  const cells = new Map<string, Cell>()
+  for (const r of rows) {
+    const def = normalizeNflAbbr(r.opponent_team)
+    const opp = normalizeNflAbbr(r.team)
+    if (!def || !opp) continue
+    const pos = r.position === 'FB' || r.position === 'HB' ? 'RB' : r.position
+    const key = `${def}|${opp}|${r.week}`
+    const c = cells.get(key) ?? { def, opp, week: Number(r.week), wr: null, teYds: 0, rbRush: 0, qbPass: 0 }
+    if (pos === 'WR' && (!c.wr || num(r.targets) > c.wr.targets)) c.wr = { name: r.player_display_name, yds: num(r.receiving_yards), rec: num(r.receptions), targets: num(r.targets) }
+    if (pos === 'TE') c.teYds += num(r.receiving_yards)
+    if (pos === 'RB') c.rbRush += num(r.rushing_yards)
+    if (pos === 'QB') c.qbPass += num(r.passing_yards)
+    cells.set(key, c)
+  }
+  const defGames: Record<string, DefGame[]> = {}
+  for (const c of Array.from(cells.values())) {
+    ;(defGames[c.def] ??= []).push({ week: c.week, opp: c.opp, wr1Name: c.wr?.name ?? '', wr1Yds: c.wr?.yds ?? 0, wr1Rec: c.wr?.rec ?? 0, wr1Targets: c.wr?.targets ?? 0, teYds: c.teYds, rbRush: c.rbRush, qbPass: c.qbPass })
+  }
+  const avg = Object.entries(defGames).filter(([, g]) => g.length >= 2).map(([def, g]) => ({ def, yds: g.reduce((n, x) => n + x.wr1Yds, 0) / g.length, games: g.length }))
+  avg.sort((a, b) => b.yds - a.yds)
+  const wr1Allowed: NflGameFacts['wr1Allowed'] = {}
+  avg.forEach((a, i) => (wr1Allowed[a.def] = { yds: a.yds, rank: i + 1, of: avg.length, games: a.games }))
+  return { defGames, wr1Allowed }
+}
+
+/** Team pass share by week and season, and who started at quarterback each week. */
+function buildTeamFacts(rows: Row[]): Pick<NflGameFacts, 'teamStyle' | 'teamWeeks' | 'qbStarters' | 'qbMain'> {
+  const weeks = new Map<string, Map<number, TeamWeek>>()
+  const qbAtt = new Map<string, Map<string, number>>()
+  const qbWeek = new Map<string, Map<number, { name: string; att: number }[]>>()
+  for (const r of rows) {
+    const team = normalizeNflAbbr(r.team)
+    const week = Number(r.week)
+    if (!team) continue
+    const tw = weeks.get(team) ?? new Map<number, TeamWeek>()
+    const cur = tw.get(week) ?? { week, opp: normalizeNflAbbr(r.opponent_team), att: 0, carries: 0, passYds: 0, rushYds: 0 }
+    cur.att += num(r.attempts)
+    cur.carries += num(r.carries)
+    cur.passYds += num(r.passing_yards)
+    cur.rushYds += num(r.rushing_yards)
+    tw.set(week, cur)
+    weeks.set(team, tw)
+    if (r.position === 'QB' && num(r.attempts) > 0) {
+      const a = qbAtt.get(team) ?? new Map<string, number>()
+      a.set(r.player_display_name, (a.get(r.player_display_name) ?? 0) + num(r.attempts))
+      qbAtt.set(team, a)
+      const w = qbWeek.get(team) ?? new Map<number, { name: string; att: number }[]>()
+      w.set(week, [...(w.get(week) ?? []), { name: r.player_display_name, att: num(r.attempts) }])
+      qbWeek.set(team, w)
+    }
+  }
+  const teamWeeks: Record<string, TeamWeek[]> = {}
+  const style: { team: string; passPct: number; plays: number }[] = []
+  weeks.forEach((tw, team) => {
+    const list = Array.from(tw.values()).sort((a, b) => a.week - b.week)
+    teamWeeks[team] = list
+    const att = list.reduce((n, x) => n + x.att, 0)
+    const car = list.reduce((n, x) => n + x.carries, 0)
+    if (att + car > 0) style.push({ team, passPct: att / (att + car), plays: att + car })
+  })
+  style.sort((a, b) => b.passPct - a.passPct)
+  const teamStyle: NflGameFacts['teamStyle'] = {}
+  style.forEach((x, i) => (teamStyle[x.team] = { passPct: x.passPct, plays: x.plays, rank: i + 1, of: style.length }))
+  const qbMain: Record<string, string> = {}
+  qbAtt.forEach((a, team) => {
+    qbMain[team] = Array.from(a.entries()).sort((x, y) => y[1] - x[1])[0][0]
+  })
+  const qbStarters: NflGameFacts['qbStarters'] = {}
+  qbWeek.forEach((w, team) => {
+    qbStarters[team] = {}
+    w.forEach((list, week) => {
+      const top = [...list].sort((x, y) => y.att - x.att)[0]
+      qbStarters[team][week] = { name: top.name, mainPlayed: top.name === qbMain[team] }
+    })
+  })
+  return { teamStyle, teamWeeks, qbStarters, qbMain }
+}
+
 export async function loadNflGameFacts(away: string, home: string, season: number): Promise<NflGameFacts | null> {
   const [rows, snaps, dAway, dHome] = await Promise.all([getNFLWeeklyPlayerStatsExact(season), loadSnaps(season), loadDepth(away), loadDepth(home)])
   if (!rows || rows.length === 0) return null
@@ -252,5 +366,5 @@ export async function loadNflGameFacts(away: string, home: string, season: numbe
       players[`${slug}|${team}`] = { name: rs[0].player_display_name, team, position: rs[0].position, games }
     }
   }
-  return { season, weeks: new Set(rows.map((r) => r.week)).size, players, vsPosition: buildVsPosition(rows), depth: { [away]: dAway, [home]: dHome } }
+  return { season, weeks: new Set(rows.map((r) => r.week)).size, players, vsPosition: buildVsPosition(rows), depth: { [away]: dAway, [home]: dHome }, ...buildDefenseGames(rows), ...buildTeamFacts(rows) }
 }

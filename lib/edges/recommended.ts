@@ -10,6 +10,7 @@ import { slugify } from '@/lib/players/slug'
 import type { Sport } from '@/lib/sport/SportContext'
 import { loadGameContext } from './data/gameContext'
 import { loadHitterMatchup, type HitterMatchup } from './data/mlbMatchup'
+import { foundationHeadline } from './gameFoundation'
 import type { ExplanationContext } from './explanationGenerator'
 import { qualityOf } from './qualityFilter'
 import { computeSynthesis } from './teamSynthesis'
@@ -149,7 +150,7 @@ function card(
     explain: {
       outcome: { type: outcome.type, direction: outcome.direction, player: outcome.player, team: outcome.team, opponent: outcome.opponent },
       evidence: r.edges,
-      context: { season: game.season, hasOdds: base.odds !== null, priorSeasonOnly: game.priorSeasonOnly, away: game.away, home: game.home, sport: game.sport },
+      context: { season: game.season, hasOdds: base.odds !== null, priorSeasonOnly: game.priorSeasonOnly, away: game.away, home: game.home, sport: game.sport, foundation: foundationHeadline(game, outcome.team?.abbr ?? outcome.player?.team ?? null, outcome.type === 'total' ? 'total' : outcome.type === 'player_prop' ? 'prop' : 'team') },
       conflicts: r.conflicts ?? 0,
       impliedProbability: base.implied,
     },

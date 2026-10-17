@@ -224,6 +224,60 @@ export interface GameContext {
   leagueWinPct: Record<string, number>
   /** College only: each team's conference, for power-conference weighting. */
   conference: Record<string, string>
+  /** The game picture built once per game (styles, quality-adjusted form, venue history, weather impact, roster context). */
+  foundation?: GameFoundation
   /** Opening line vs now, when the line archive has both. */
   lineMove: { total: { open: number; now: number } | null; spread: { open: number; now: number } | null } | null
+}
+
+// ---------------------------------------------------------------------------
+// Game foundation
+// ---------------------------------------------------------------------------
+
+/** Who benefits from tonight's weather and how it reaches specific positions and bets (outdoor games only). */
+export interface WeatherImpact {
+  /** One sentence naming the conditions and what they do. */
+  text: string
+  windy: boolean
+  cold: boolean
+  wet: boolean
+  /** Football: deep passing is suppressed (so vertical route runners lose more than short-route receivers). */
+  deepSuppressed: boolean
+  /** Baseball: which way the wind is carrying the ball. */
+  carry: 'out' | 'in' | null
+  /** The team whose style the conditions favor, when styles are known. */
+  favors: string | null
+}
+
+/** A player who is out (or returning) tonight, with what it changes and for whom. */
+export interface RosterNote {
+  team: string
+  player: string
+  position: string
+  kind: 'out' | 'returning'
+  text: string
+  /** Positions whose props are affected (e.g. WR, RB, QB), or ['team'] when it moves the team lines. */
+  affects: string[]
+  impact: 'high' | 'medium'
+}
+
+export interface TeamFoundation {
+  /** "pass-heavy offense (64% pass rate, 3rd of 32)"; null when the sport has no such measure. */
+  offense: string | null
+  offenseLabel: 'pass-heavy' | 'run-heavy' | 'balanced' | null
+  /** What the defense gives up, from yards allowed by position (scheme data is not published). */
+  defense: string | null
+  defenseLabel: 'pass-funnel' | 'run-funnel' | 'soft' | 'stingy' | 'balanced' | null
+  /** The recent record read against opponent quality, with compromised opponents flagged. */
+  form: { text: string; raw: { w: number; l: number }; adjusted: { w: number; l: number } | null; flagged: string[] } | null
+  /** Road/home record this season and the record at tonight's venue over recent seasons. */
+  venue: { current: string | null; history: string | null; climate: string | null; historyRec: { w: number; l: number } | null; climateRec: { w: number; l: number } | null }
+}
+
+export interface GameFoundation {
+  teams: Record<string, TeamFoundation>
+  /** Does one team's style attack the other's weakness? One sentence per attacking team. */
+  styleMatchup: Record<string, string>
+  weather: WeatherImpact | null
+  roster: RosterNote[]
 }

@@ -3,6 +3,9 @@
  * and NBA, NHL and indoor college basketball never have weather at all.
  */
 
+/** True when a team plays its home games under a roof (a dome or a retractable roof that is normally closed). */
+export const nflRoofedHome = (abbr: string) => NFL_ROOFED.has(abbr)
+
 /** NFL home teams whose stadium is a dome or a retractable roof that is normally closed (SoFi is covered). */
 const NFL_ROOFED = new Set(['DAL', 'ARI', 'LV', 'IND', 'DET', 'MIN', 'ATL', 'NO', 'LAR', 'LAC', 'HOU'])
 /** Retractable NFL roofs: open-air only when the schedule explicitly says the roof is open. */

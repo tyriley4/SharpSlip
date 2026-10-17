@@ -9,6 +9,7 @@ import { loadGameContext } from './data/gameContext'
 import { categoryForMarket, getPlayerHistory } from './data/playerHistory'
 import { loadHitterMatchup } from './data/mlbMatchup'
 import { evaluateWithContext } from './edgeEngine'
+import { foundationHeadline } from './gameFoundation'
 import { generateBetExplanation } from './explanationGenerator'
 import type { BettingOutcome, EdgeCategory, Grade } from './types'
 
@@ -152,7 +153,7 @@ export async function getPlayerConviction(args: PlayerConvictionArgs): Promise<P
             r.edges,
             r.convictionScore,
             r.grade ?? 'F',
-            { season: ctx.season, hasOdds: odds !== undefined, priorSeasonOnly: ctx.priorSeasonOnly, away: ctx.away, home: ctx.home, sport },
+            { season: ctx.season, hasOdds: odds !== undefined, priorSeasonOnly: ctx.priorSeasonOnly, away: ctx.away, home: ctx.home, sport, foundation: foundationHeadline(ctx, team, 'prop') },
             { description: `${name} ${formatAtLeast(t)} ${category}`, conflicts: r.conflicts ?? 0, limitedSample: r.limitedSample, gradeNote: r.gradeNote, historicalHitRate: r.historicalHitRate, impliedProbability: implied !== undefined ? implied * 100 : null, isSharpFind: r.isSharpFind }
           ),
         }

@@ -6,12 +6,13 @@ import type { BettingOutcome, Edge, Horizon, SeasonContext } from './types'
  * demand in the browser from data already on the card, so tapping the icon makes no request. The wording is always "the
  * case for..." / "the evidence supports..." and never an instruction to bet.
  *
- * Shape (five sentences at most):
- *   1. the strongest tonight-specific or opponent-specific factor,
- *   2. up to two supporting facts, each already tied to tonight in its own wording,
- *   3. the time window that is most predictive here and why, with the filter that lets the reader check it,
- *   4. the primary uncertainty tonight,
- *   5. the grade and its basis (with or without live odds).
+ * Shape:
+ *   1. the game foundation: the full game context (style matchup, form against opponent quality, venue, weather, roster) that
+ *      shapes how the evidence is weighted,
+ *   2-3. the strongest one or two evidence items, each already carrying its number, its comparison and its tie to tonight,
+ *   4. supporting context, up to two more items that add a different angle (never a repeated fact),
+ *   then the time window that is most predictive and the filter that lets the reader check it,
+ *   5. the primary uncertainty tonight and the grade with its basis (with or without live odds).
  */
 
 export interface ExplanationContext {
@@ -23,6 +24,8 @@ export interface ExplanationContext {
   home: string
   /** For naming the time-period filter that matches a window. */
   sport?: string
+  /** The one most useful sentence of the game foundation for this bet (style matchup, adjusted form, weather, roster). */
+  foundation?: string | null
 }
 
 export interface ExplanationMeta {
@@ -123,7 +126,9 @@ function lowerLead(t: string): string {
 export function generateBetExplanation(outcome: Pick<BettingOutcome, 'type' | 'direction' | 'player' | 'team' | 'opponent'>, evidenceItems: Edge[], convictionScore: number, grade: string, gameContext: ExplanationContext, meta: ExplanationMeta): string {
   const opp = outcome.opponent ?? outcome.team?.opponent
   // Priority order: tonight-specific (tier 1) and opponent-specific (tier 2) first, each by how strongly it bears on the bet.
-  const items = [...evidenceItems].sort((a, b) => (a.tier ?? 9) - (b.tier ?? 9) || strength(b) - strength(a))
+  const found = gameContext.foundation ? clean(gameContext.foundation) : null
+  const head = found ? found.slice(0, 40) : null
+  const items = [...evidenceItems].filter((e) => !head || !e.description.startsWith(head)).sort((a, b) => (a.tier ?? 9) - (b.tier ?? 9) || strength(b) - strength(a))
   const sentences: string[] = []
 
   // ---- The primary uncertainty tonight.
@@ -150,6 +155,7 @@ export function generateBetExplanation(outcome: Pick<BettingOutcome, 'type' | 'd
     return sentences.join(' ')
   }
 
+  if (found) sentences.push(`This analysis is grounded in the full game context — ${found} — which shapes how the following evidence is weighted.`)
   const strong = grade === 'A' || grade === 'B' || grade === 'C'
   const lead = items[0]
   const leadText = withSubject(clean(lead.description), outcome)
@@ -160,14 +166,15 @@ export function generateBetExplanation(outcome: Pick<BettingOutcome, 'type' | 'd
   const used = [lead]
   const supports: Edge[] = []
   for (const e of items.slice(1)) {
-    if (supports.length >= 2) break
+    if (supports.length >= 3) break
     if (used.some((u) => sameFact(u, e))) continue
     // Prefer a different kind of evidence than the lead.
     if (supports.length === 0 && e.category === lead.category && items.some((x) => !used.includes(x) && x.category !== lead.category && (x.tier ?? 9) <= 4)) continue
     used.push(e)
     supports.push(e)
   }
-  if (supports.length > 0) sentences.push(`Supporting that, ${supports.map((e) => lowerLead(withSubject(clean(e.description), outcome))).join('; and ')}.`)
+  if (supports.length > 0) sentences.push(`Reinforcing that, ${lowerLead(withSubject(clean(supports[0].description), outcome))}.`)
+  if (supports.length > 1) sentences.push(`Supporting context: ${supports.slice(1).map((e) => lowerLead(withSubject(clean(e.description), outcome))).join('; and ')}.`)
 
   const windowNote = windowSentence(items, outcome, gameContext.sport, opp)
   if (windowNote) sentences.push(windowNote)

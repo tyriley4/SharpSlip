@@ -3,10 +3,10 @@ import { scoreConviction } from './convictionScore'
 import { getPlayerHistory } from './data/playerHistory'
 import { loadGameContext } from './data/gameContext'
 import { MIN_QUALITY, qualityOf } from './evidenceFramework'
+import { meetsStandard } from './qualityFilter'
 import { horizonGroup, horizonOf } from './horizon'
 import { stageEvidenceMultipliers } from './historicalRates'
 import { synthesisFor } from './teamSynthesis'
-import { passesEvidenceFilter } from './evidenceFilter'
 import { primaryRate } from './primaryRate'
 import { sportEvidence } from './sports'
 import type { ModuleExtras, ModuleInput } from './modules/shared'
@@ -53,7 +53,7 @@ export function evaluateWithContext(outcome: BettingOutcome, game: GameContext, 
   const mult = stageEvidenceMultipliers(history?.stage?.stage)
   // Only evidence that clears the quality bar and the evidence filter (records, real numbers, no pooled stats) can score.
   const surfaced = edges
-    .filter((e) => qualityOf(e) >= MIN_QUALITY && passesEvidenceFilter(e))
+    .filter((e) => qualityOf(e) >= MIN_QUALITY && meetsStandard(e))
     .map((e) => {
       if (mult.current === 1 && mult.career === 1) return e
       const g = horizonGroup(horizonOf(e))

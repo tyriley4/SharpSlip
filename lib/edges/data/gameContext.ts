@@ -26,6 +26,7 @@ import { loadMlbGameFacts } from './mlb'
 import { loadNbaGameFacts } from './nba'
 import { loadNflGameFacts } from './nfl'
 import { loadNhlGameFacts } from './nhl'
+import { buildGameFoundation } from '../gameFoundation'
 import { loadTeammatesOut } from './teammates'
 
 /** ESPN season year for "now": basketball and hockey seasons are named for the year they end in. */
@@ -101,7 +102,7 @@ async function defenseTables(sport: Sport): Promise<Record<string, Record<string
     put('Points', 'goals against per game', usable.map((r) => ({ abbr: r.abbr, value: r.goalsAgainstPerGame })))
     put('Assists', 'goals against per game', usable.map((r) => ({ abbr: r.abbr, value: r.goalsAgainstPerGame })))
   } else if (sport === 'mlb') {
-    interface Split { team: { id: number }; stat: { gamesPlayed?: number; hits?: number; homeRuns?: number; strikeOuts?: number; plateAppearances?: number } }
+    interface Split { team: { id: number }; stat: { era?: string; gamesPlayed?: number; hits?: number; homeRuns?: number; strikeOuts?: number; plateAppearances?: number } }
     const year = currentSeasonYear('mlb')
     const [pit, hit, idx] = await Promise.all([
       fetchJson<{ stats: { splits: Split[] }[] }>(`https://statsapi.mlb.com/api/v1/teams/stats?stats=season&group=pitching&season=${year}&sportIds=1`, 21600, `edges-mlb-pit-${year}`),
@@ -115,6 +116,11 @@ async function defenseTables(sport: Sport): Promise<Record<string, Record<string
         const v = f(s.stat)
         return abbr && gp >= 5 && v !== undefined ? [{ abbr, value: v / gp }] : []
       })
+    put('ERA', 'team ERA', (pit?.stats?.[0]?.splits ?? []).flatMap((s) => {
+      const abbr = idx?.get(s.team.id)?.abbr
+      const v = Number(s.stat.era)
+      return abbr && (s.stat.gamesPlayed ?? 0) >= 5 && Number.isFinite(v) ? [{ abbr, value: v }] : []
+    }))
     put('Hits', 'hits allowed per game', rows(pit, (s) => s.hits))
     put('Home Runs', 'home runs allowed per game', rows(pit, (s) => s.homeRuns))
     put('Strikeouts', 'batter strikeouts per game', rows(hit, (s) => s.strikeOuts))
@@ -284,6 +290,11 @@ export async function loadGameContext(sport: Sport, gameId: string, away: string
       conference: conf,
       lineMove: null,
     }
+    // The game picture every bet in this game reads (styles, quality-adjusted form, venue history, weather impact, roster).
+    ctx.foundation = await buildGameFoundation(ctx).catch((err) => {
+      console.error(`[edges] ${sport} foundation failed`, err)
+      return undefined
+    })
     return ctx
   })
   return out as GameContext

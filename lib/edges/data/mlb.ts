@@ -40,6 +40,9 @@ export interface PitchSplit {
   era: number
   k9: number
   whip: number
+  /** Walks and home runs per nine. */
+  bb9: number
+  hr9: number
   kPct: number
   bf: number
 }
@@ -73,11 +76,23 @@ export interface StarterFacts {
   restDays: number | null
 }
 
+/** A hitter's average and OPS against one handedness this season. */
+export interface HandLine {
+  avg: number
+  ops: string
+  ab: number
+  pa: number
+}
+
 export interface BatterFacts {
   id: number
   name: string
   side: 'L' | 'R' | 'S' | null
   vsHand: { pa: number; k: number; avg: number } | null
+  /** Both splits, so a platoon edge is confirmed (or contradicted) by the hitter's own numbers. */
+  splits: { vl: HandLine | null; vr: HandLine | null }
+  /** Average over his last ten games against his season average. */
+  form: { last10Avg: number | null; last10Ab: number; seasonAvg: number | null }
   vsPitcher: { pa: number; ab: number; h: number; k: number; hr: number } | null
 }
 
@@ -106,8 +121,22 @@ export interface TeamRecent {
   kPct: number
 }
 
+/** One reliever's work in the last two days, with how much his role matters tonight. */
+export interface UsedArm {
+  name: string
+  ip: number
+  pitches: number
+  /** 1 = yesterday, 2 = two days ago. */
+  daysBefore: number
+  role: 'closer' | 'setup' | 'middle' | 'long'
+  saves: number
+  holds: number
+}
+
 export interface BullpenFacts {
   team: string
+  /** Every reliever who pitched in the last two days. */
+  used: UsedArm[]
   /** Relief innings thrown in the team's games over the last two days. */
   lastTwoDaysInnings: number
   /** Games behind that figure. */
@@ -173,6 +202,7 @@ interface RawStat {
   atBats?: number
   homeRuns?: number
   avg?: string
+  ops?: string
   runs?: number
 }
 interface RawSplit {
@@ -192,7 +222,7 @@ function toSplit(s: RawStat): PitchSplit | null {
   const inn = ip(s.inningsPitched)
   if (inn <= 0) return null
   const bf = s.battersFaced ?? 0
-  return { ip: inn, era: ((s.earnedRuns ?? 0) * 9) / inn, k9: ((s.strikeOuts ?? 0) * 9) / inn, whip: ((s.hits ?? 0) + (s.baseOnBalls ?? 0)) / inn, kPct: bf > 0 ? ((s.strikeOuts ?? 0) / bf) * 100 : 0, bf }
+  return { ip: inn, era: ((s.earnedRuns ?? 0) * 9) / inn, k9: ((s.strikeOuts ?? 0) * 9) / inn, whip: ((s.hits ?? 0) + (s.baseOnBalls ?? 0)) / inn, bb9: ((s.baseOnBalls ?? 0) * 9) / inn, hr9: ((s.homeRuns ?? 0) * 9) / inn, kPct: bf > 0 ? ((s.strikeOuts ?? 0) / bf) * 100 : 0, bf }
 }
 
 export async function loadStarterFacts(id: number, name: string, opponentTeamId: number, officialDate: string, year: number): Promise<StarterFacts> {
@@ -243,11 +273,23 @@ export async function loadLineupFacts(team: string, batters: { id: number; name:
     const sides = await get<{ people?: { id: number; batSide?: { code?: string } }[] }>(`${API}/people?personIds=${batters.map((b) => b.id).join(',')}&fields=people,id,batSide,code`)
     const sideOf = new Map((sides?.people ?? []).map((p) => [p.id, p.batSide?.code]))
     const rows = await mapWithConcurrency(batters, 5, async (b): Promise<BatterFacts> => {
-      const [sp, vs] = await Promise.all([
-        facing.hand ? get<StatsResp>(`${API}/people/${b.id}/stats?stats=statSplits&group=hitting&sitCodes=${facing.hand === 'L' ? 'vl' : 'vr'}&season=${year}`) : Promise.resolve(null),
+      const [sp, vs, log] = await Promise.all([
+        get<StatsResp>(`${API}/people/${b.id}/stats?stats=statSplits&group=hitting&sitCodes=vl,vr&season=${year}`),
         get<StatsResp>(`${API}/people/${b.id}/stats?stats=vsPlayer&group=hitting&opposingPlayerId=${facing.id}`),
+        get<StatsResp>(`${API}/people/${b.id}/stats?stats=gameLog&group=hitting&season=${year}`),
       ])
-      const s = splitsOf(sp)[0]?.stat
+      const handOf = (code: 'vl' | 'vr'): HandLine | null => {
+        const x = splitsOf(sp).find((q) => q.split?.code === code)?.stat
+        return x && (x.atBats ?? 0) > 0 ? { avg: Number(x.avg ?? 0), ops: x.ops ?? '', ab: x.atBats ?? 0, pa: x.plateAppearances ?? 0 } : null
+      }
+      const handCode = facing.hand === 'L' ? 'vl' : 'vr'
+      const s = facing.hand ? splitsOf(sp).find((q) => q.split?.code === handCode)?.stat : undefined
+      const games = splitsOf(log).sort((a, b2) => (b2.date ?? '').localeCompare(a.date ?? ''))
+      const last10 = games.slice(0, 10)
+      const l10Ab = last10.reduce((n, g) => n + (g.stat.atBats ?? 0), 0)
+      const l10H = last10.reduce((n, g) => n + (g.stat.hits ?? 0), 0)
+      const sAb = games.reduce((n, g) => n + (g.stat.atBats ?? 0), 0)
+      const sH = games.reduce((n, g) => n + (g.stat.hits ?? 0), 0)
       const v = splitsOf(vs)[0]?.stat
       const c = sideOf.get(b.id)
       return {
@@ -255,6 +297,8 @@ export async function loadLineupFacts(team: string, batters: { id: number; name:
         name: b.name,
         side: c === 'L' || c === 'R' || c === 'S' ? c : null,
         vsHand: s ? { pa: s.plateAppearances ?? 0, k: s.strikeOuts ?? 0, avg: Number(s.avg ?? 0) } : null,
+        splits: { vl: handOf('vl'), vr: handOf('vr') },
+        form: { last10Avg: l10Ab >= 15 ? l10H / l10Ab : null, last10Ab: l10Ab, seasonAvg: sAb >= 40 ? sH / sAb : null },
         vsPitcher: v ? { pa: v.plateAppearances ?? 0, ab: v.atBats ?? 0, h: v.hits ?? 0, k: v.strikeOuts ?? 0, hr: v.homeRuns ?? 0 } : null,
       }
     })
@@ -311,7 +355,7 @@ export async function loadTeamRecent(teamId: number, officialDate: string, days:
 }
 
 interface Boxscore {
-  teams?: Record<'away' | 'home', { team?: { id: number }; pitchers?: number[]; players?: Record<string, { person?: { fullName?: string }; stats?: { pitching?: { inningsPitched?: string } } }> }>
+  teams?: Record<'away' | 'home', { team?: { id: number }; pitchers?: number[]; players?: Record<string, { person?: { id?: number; fullName?: string }; stats?: { pitching?: { inningsPitched?: string; numberOfPitches?: number } } }> }>
 }
 
 /** One team's relief use over the two days before tonight, from the boxscores of the games it played (final games never change). */
@@ -331,6 +375,7 @@ async function loadTeamBullpen(teamId: number, label: string, officialDate: stri
     if (boxes.some((b) => !b.box)) return null
     let lastTwo = 0
     const yesterday = new Set<string>()
+    const usedRaw: { id: number; name: string; ip: number; pitches: number; daysBefore: number }[] = []
     for (const { g, box } of boxes) {
       const side = box?.teams?.away?.team?.id === teamId ? 'away' : 'home'
       const t = box?.teams?.[side]
@@ -340,9 +385,23 @@ async function loadTeamBullpen(teamId: number, label: string, officialDate: stri
         const pl = t.players?.[`ID${pid}`]
         lastTwo += ip(pl?.stats?.pitching?.inningsPitched)
         if (daysBefore === 1 && pl?.person?.fullName) yesterday.add(pl.person.fullName)
+        if (pl?.person?.id && pl.person.fullName) usedRaw.push({ id: pl.person.id, name: pl.person.fullName, ip: ip(pl.stats?.pitching?.inningsPitched), pitches: pl.stats?.pitching?.numberOfPitches ?? 0, daysBefore })
       })
     }
-    return { team: label, lastTwoDaysInnings: lastTwo, games: boxes.length, usedYesterday: Array.from(yesterday), era, ip: rpIp } satisfies BullpenFacts
+    // Role from this season's saves and holds: closers and setup men are the high-leverage arms; long men and mop-up arms are not.
+    const used = await mapWithConcurrency(usedRaw, 4, async (u): Promise<UsedArm> => {
+      const st = await cached(`edges:mlbarm:${u.id}:${year}`, 6 * 3600, async () => {
+        const r = await get<StatsResp>(`${API}/people/${u.id}/stats?stats=season&group=pitching&season=${year}`)
+        const x = splitsOf(r)[0]?.stat as (RawStat & { saves?: number; holds?: number; gamesPitched?: number }) | undefined
+        return x ? { saves: x.saves ?? 0, holds: x.holds ?? 0, games: x.gamesPitched ?? 0, ip: ip(x.inningsPitched) } : null
+      })
+      const saves = st?.saves ?? 0
+      const holds = st?.holds ?? 0
+      const perApp = st && st.games > 0 ? st.ip / st.games : 1
+      const role: UsedArm['role'] = saves >= 8 ? 'closer' : holds >= 8 || saves >= 3 ? 'setup' : u.ip >= 2 || perApp >= 1.6 ? 'long' : 'middle'
+      return { name: u.name, ip: u.ip, pitches: u.pitches, daysBefore: u.daysBefore, role, saves, holds }
+    })
+    return { team: label, lastTwoDaysInnings: lastTwo, games: boxes.length, usedYesterday: Array.from(yesterday), used, era, ip: rpIp } satisfies BullpenFacts
   })
 }
 
