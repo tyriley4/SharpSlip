@@ -6,18 +6,9 @@ import { MIN_QUALITY, qualityOf } from './evidenceFramework'
 import { horizonGroup, horizonOf } from './horizon'
 import { stageEvidenceMultipliers } from './historicalRates'
 import { synthesisFor } from './teamSynthesis'
-import { connectToTonight } from './tonight'
-import { contextModule } from './modules/context'
-import { h2hModule } from './modules/h2h'
-import { horizonsModule } from './modules/horizons'
-import { sportModule } from './modules/sport'
-import { teamModule } from './modules/team'
-import { hitRateModule, primaryRate } from './modules/hitRate'
-import { matchupModule } from './modules/matchup'
-import { opportunityModule } from './modules/opportunity'
-import { recentFormModule } from './modules/recentForm'
-import { situationalModule } from './modules/situational'
-import { splitsModule } from './modules/splits'
+import { passesEvidenceFilter } from './evidenceFilter'
+import { primaryRate } from './primaryRate'
+import { sportEvidence } from './sports'
 import type { ModuleExtras, ModuleInput } from './modules/shared'
 import { roleModule, type RoleOutput } from './roleContext'
 import type { BettingOutcome, Edge, EdgeResult, GameContext, Grade, ModuleOutput, PlayerHistory } from './types'
@@ -26,17 +17,7 @@ const MAX_INSIGHTS = 8
 
 const MODULES: { name: string; run: (i: ModuleInput) => ModuleOutput & Partial<Pick<RoleOutput, 'gradeCap'>> }[] = [
   { name: 'role', run: roleModule },
-  { name: 'opportunity', run: opportunityModule },
-  { name: 'sport', run: sportModule },
-  { name: 'team', run: teamModule },
-  { name: 'horizons', run: horizonsModule },
-  { name: 'recentForm', run: recentFormModule },
-  { name: 'hitRate', run: hitRateModule },
-  { name: 'splits', run: splitsModule },
-  { name: 'matchup', run: matchupModule },
-  { name: 'situational', run: situationalModule },
-  { name: 'h2h', run: h2hModule },
-  { name: 'context', run: contextModule },
+  { name: 'sport', run: sportEvidence },
 ]
 
 const ORDER: Grade[] = ['F', 'D', 'C', 'B', 'A']
@@ -70,13 +51,10 @@ export function evaluateWithContext(outcome: BettingOutcome, game: GameContext, 
   const historicalRate = primary ? primary.rate : null
   // Career stage: an ascending player's career is context and his current season leads; a declining veteran's career flatters him.
   const mult = stageEvidenceMultipliers(history?.stage?.stage)
-  // Every surviving item is completed with why it matters tonight (pattern — tonight clause).
-  const surfaced = connectToTonight(
-    edges.filter((e) => qualityOf(e) >= MIN_QUALITY),
-    outcome,
-    game,
-    history
-  ).map((e) => {
+  // Only evidence that clears the quality bar and the evidence filter (records, real numbers, no pooled stats) can score.
+  const surfaced = edges
+    .filter((e) => qualityOf(e) >= MIN_QUALITY && passesEvidenceFilter(e))
+    .map((e) => {
       if (mult.current === 1 && mult.career === 1) return e
       const g = horizonGroup(horizonOf(e))
       return g === 'historical' ? { ...e, weight: e.weight * mult.career } : g === 'current' ? { ...e, weight: e.weight * mult.current } : e
@@ -88,8 +66,8 @@ export function evaluateWithContext(outcome: BettingOutcome, game: GameContext, 
   const informational = surfaced.filter((e) => e.weight === 0)
   const conviction = scoreConviction({ edges: scoring, conflicts, historicalRate, impliedProbability: outcome.impliedProbability ?? null, sampleSize, season: game.season, gradeCap, synthesisMultiplier: syn.multiplier })
 
-  // Flat list ranked by quality score, best first.
-  const ranked = [...scoring, ...informational].sort((a, b) => qualityOf(b) - qualityOf(a) || b.relevanceScore * b.weight - a.relevanceScore * a.weight)
+  // Ranked by priority tier (tonight-specific first, historical last), then by how directly each item bears on the bet.
+  const ranked = [...scoring, ...informational].sort((a, b) => (a.tier ?? 9) - (b.tier ?? 9) || b.weight - a.weight || b.relevanceScore - a.relevanceScore || qualityOf(b) - qualityOf(a))
 
   return {
     grade: conviction.grade,

@@ -5,14 +5,14 @@ export interface HitterMatchup {
   pitcher: string
   hand: 'L' | 'R' | null
   /** Career against this exact pitcher. */
-  vs: { atBats: number; plateAppearances: number; hits: number; homeRuns: number; avg: number } | null
+  vs: { atBats: number; plateAppearances: number; hits: number; homeRuns: number; strikeOuts: number; avg: number } | null
   /** This season against left- or right-handed pitching. */
   platoon: { hand: 'L' | 'R'; atBats: number; hits: number; homeRuns: number; avg: number; ops: string } | null
 }
 
 interface Split {
   split?: { code?: string }
-  stat: { atBats?: number; plateAppearances?: number; hits?: number; homeRuns?: number; avg?: string; ops?: string }
+  stat: { atBats?: number; plateAppearances?: number; hits?: number; homeRuns?: number; strikeOuts?: number; avg?: string; ops?: string }
 }
 
 const get = async <T>(url: string): Promise<T | null> => {
@@ -38,7 +38,7 @@ export async function loadHitterMatchup(playerId: string, pitcherId: number, pit
     return {
       pitcher: pitcherName,
       hand: pitchHand,
-      vs: v ? { atBats: v.atBats ?? 0, plateAppearances: v.plateAppearances ?? 0, hits: v.hits ?? 0, homeRuns: v.homeRuns ?? 0, avg: Number(v.avg ?? 0) } : null,
+      vs: v ? { atBats: v.atBats ?? 0, plateAppearances: v.plateAppearances ?? 0, hits: v.hits ?? 0, homeRuns: v.homeRuns ?? 0, strikeOuts: v.strikeOuts ?? 0, avg: Number(v.avg ?? 0) } : null,
       platoon: pSplit && pitchHand ? { hand: pitchHand, atBats: pSplit.atBats ?? 0, hits: pSplit.hits ?? 0, homeRuns: pSplit.homeRuns ?? 0, avg: Number(pSplit.avg ?? 0), ops: pSplit.ops ?? '' } : null,
     } satisfies HitterMatchup
   })

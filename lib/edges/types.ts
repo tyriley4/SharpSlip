@@ -69,6 +69,8 @@ export interface Edge {
   /** Whole seasons ago the evidence is from (0 = this season); drives the recency weight. */
   seasonsAgo?: number
   horizon?: Horizon
+  /** Evidence priority tier, 1 (tonight-specific) to 6 (historical); the card lists items in this order. */
+  tier?: number
   /** Games behind the item when that is below the standard minimum: shown as an early-season signal. */
   smallSample?: number
   /** The numbers behind the item, so explanations can compare horizons (a rate is 0-1). */

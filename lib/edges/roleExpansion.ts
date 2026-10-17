@@ -48,7 +48,7 @@ function classify(recent: number[], season: number, teammateOut: boolean): Expan
 }
 
 const TYPE_TEXT: Record<Exclude<ExpansionType, 'noise'>, string> = {
-  organic: 'earned through performance, the most sustainable kind of expansion',
+  organic: 'earned through performance',
   opportunity: 'driven by a teammate\'s absence, so it may be temporary',
 }
 
@@ -61,6 +61,8 @@ export function expansionEvidence({ outcome: o, game, history }: ModuleInput): M
   const games = history?.games ?? []
   const spec = usageSpec(game.sport, position, o.category)
   const mates = (game.teammatesOut ?? []).some((t) => t.team === o.player!.team && t.usage)
+  const name = o.player.name
+  const lineText = `${over ? 'Over' : 'Under'} ${o.threshold} ${o.category}`
 
   if (spec && games.length >= 8) {
     const recentGames = games.slice(0, spec.window)
@@ -78,7 +80,7 @@ export function expansionEvidence({ outcome: o, game, history }: ModuleInput): M
       if (over && ratio >= spec.jump && r >= spec.floor * 0.8 && kind !== 'noise') {
         const k = kind as Exclude<ExpansionType, 'noise'>
         edges.push({
-          description: `${spec.key === 'Targets' ? 'Commanding' : 'Averaging'} ${r.toFixed(1)} ${spec.label} per game over the last ${recent.length} games — expanded from a ${s.toFixed(1)} season average (${k} expansion: ${TYPE_TEXT[k]})`,
+          description: `${name} is averaging ${r.toFixed(1)} ${spec.label} per game over the last ${recent.length} games vs a ${s.toFixed(1)} season average — a role expansion (${TYPE_TEXT[k]}) that carries into tonight's ${lineText}`,
           category: 'role',
           horizon: 'last7',
           layer: 'opportunity',
@@ -90,36 +92,9 @@ export function expansionEvidence({ outcome: o, game, history }: ModuleInput): M
           sample: recent.length,
           metrics: { avg: r, n: recent.length },
         })
-        // The same expansion supports every correlated receiving market at once.
-        if (game.sport === 'nfl' && spec.key === 'Targets') {
-          edges.push({
-            description: 'Expanded role creates potential value across reception, receiving-yard and touchdown markets, since all three ride on the same target volume',
-            category: 'role',
-            horizon: 'last7',
-            layer: 'opportunity',
-            relevanceScore: 0.6,
-            supportingData: 'Correlated props: receptions, receiving yards, anytime touchdown',
-            weight: 0,
-            quality: q(3, 3, 3, 1),
-          })
-        }
-      } else if (over && r >= spec.floor && (ratio < spec.jump || kind === 'noise')) {
-        // A jump driven by one or two big games (noise) is not surfaced as an expansion; the steady usage still is.
-        edges.push({
-          description: `Clear role: ${r.toFixed(1)} ${spec.label} per game over the last ${recent.length} games`,
-          category: 'role',
-          horizon: 'last7',
-          layer: 'opportunity',
-          relevanceScore: Math.min(1, 0.55 + Math.max(0, r / Math.max(spec.floor, 1) - 1) * 0.5),
-          supportingData: `Season average ${s.toFixed(1)} ${spec.label}`,
-          weight: 0.12,
-          ageDays: age,
-          quality: q(3, 3, 3, recent.length >= 4 ? 1 : 0),
-          sample: recent.length,
-        })
       } else if (over && ratio <= 0.85) conflicts++
       else if (!over && ratio <= 0.85) {
-        edges.push({ description: `Usage is down: ${r.toFixed(1)} ${spec.label} per game over the last ${recent.length} games against ${s.toFixed(1)} for the season`, category: 'role', horizon: 'last7', layer: 'opportunity', relevanceScore: 0.6, supportingData: 'Fewer opportunities lowers the ceiling', weight: 0.12, ageDays: age, quality: q(3, 3, 3, 1), sample: recent.length })
+        edges.push({ description: `${name}'s usage is down: ${r.toFixed(1)} ${spec.label} per game over the last ${recent.length} games against ${s.toFixed(1)} for the season — fewer opportunities tonight lower the ceiling`, category: 'role', horizon: 'last7', layer: 'opportunity', relevanceScore: 0.6, supportingData: 'Fewer opportunities lowers the ceiling', weight: 0.12, ageDays: age, quality: q(3, 3, 3, 1), sample: recent.length })
       }
       // Sustained usage: five-plus targets in three or more straight games.
       if (over && game.sport === 'nfl' && spec.key === 'Targets') {
@@ -128,7 +103,7 @@ export function expansionEvidence({ outcome: o, game, history }: ModuleInput): M
           if ((g.values.Targets ?? 0) >= 5) streak++
           else break
         }
-        if (streak >= 3) edges.push({ description: `5+ targets in ${streak} consecutive games — sustained usage elevation`, category: 'role', horizon: 'last7', layer: 'opportunity', relevanceScore: Math.min(1, 0.5 + (streak - 3) * 0.1), supportingData: games.slice(0, streak).map((g) => g.values.Targets).join(', ') + ' targets (most recent first)', weight: 0.1, ageDays: age, quality: q(3, 3, 3, 0), sample: streak })
+        if (streak >= 3) edges.push({ description: `${name} has had 5+ targets in ${streak} straight games — that volume carries into tonight`, category: 'role', horizon: 'last7', layer: 'opportunity', relevanceScore: Math.min(1, 0.5 + (streak - 3) * 0.1), supportingData: games.slice(0, streak).map((g) => g.values.Targets).join(', ') + ' targets (most recent first)', weight: 0.1, ageDays: age, quality: q(3, 3, 3, 0), sample: streak })
       }
     }
   }
@@ -144,9 +119,9 @@ export function expansionEvidence({ outcome: o, game, history }: ModuleInput): M
       const seasonAvg = avg(snaps)
       if (seasonAvg > 0 && rec >= seasonAvg * 1.25 && rec >= 0.45) {
         const kind = classify(last3, seasonAvg, mates)
-        if (kind !== 'noise') edges.push({ description: `Snap share has expanded to ${Math.round(rec * 100)}% over the last 3 games from ${Math.round(seasonAvg * 100)}% for the season (${kind} expansion: ${TYPE_TEXT[kind]})`, category: 'role', horizon: 'last7', layer: 'opportunity', relevanceScore: 0.7, supportingData: `Snap share by game: ${(p?.games ?? []).slice(0, 3).map((g) => (g.snapPct === null ? '—' : `${Math.round(g.snapPct * 100)}%`)).join(', ')}`, weight: kind === 'organic' ? 0.18 : 0.14, ageDays: 7, quality: q(3, 3, 3, 1), sample: 3 })
+        if (kind !== 'noise') edges.push({ description: `${name}'s snap share has expanded to ${Math.round(rec * 100)}% over the last 3 games from ${Math.round(seasonAvg * 100)}% for the season (${TYPE_TEXT[kind]}) — the workload behind tonight's ${lineText}`, category: 'role', horizon: 'last7', layer: 'opportunity', relevanceScore: 0.7, supportingData: `Snap share by game: ${(p?.games ?? []).slice(0, 3).map((g) => (g.snapPct === null ? '—' : `${Math.round(g.snapPct * 100)}%`)).join(', ')}`, weight: kind === 'organic' ? 0.18 : 0.14, ageDays: 7, quality: q(3, 3, 3, 1), sample: 3 })
       }
-      if (last3.length === 3 && last3.every((v) => v > 0.65)) edges.push({ description: `Lead back: above 65% of offensive snaps in each of the last 3 games`, category: 'role', horizon: 'last7', layer: 'opportunity', relevanceScore: 0.7, supportingData: 'Snap counts, nflverse', weight: 0.12, ageDays: 7, quality: q(3, 3, 3, 1), sample: 3 })
+      if (last3.length === 3 && last3.every((v) => v > 0.65)) edges.push({ description: `${name} has played above 65% of offensive snaps in each of the last 3 games — a lead-back workload going into tonight`, category: 'role', horizon: 'last7', layer: 'opportunity', relevanceScore: 0.7, supportingData: 'Snap counts, nflverse', weight: 0.12, ageDays: 7, quality: q(3, 3, 3, 1), sample: 3 })
     }
   }
   return { edges, conflicts }
@@ -162,53 +137,28 @@ export function stageAndTrajectory({ outcome: o, history }: ModuleInput): Module
   if (o.type !== 'player_prop' || !o.category || o.threshold === undefined || !history) return { edges, conflicts }
   const over = o.direction !== 'under'
   const games = history.games
-  const stage = history.stage
   const cat = o.category
-
-  // Trajectory over the last 15 games.
+  // A last-15 trajectory that runs against the bet, or a declining veteran whose career rate flatters him, lowers the grade;
+  // neither is shown as evidence (the recent-form item carries the trend when it supports the bet).
   const seasonGames = games.filter((g) => g.season === games[0]?.season)
   if (seasonGames.length >= 10) {
     const last15 = games.slice(0, 15).filter((g) => typeof g.values[cat] === 'number')
     const l = avg(vals(last15, cat))
-    const s = avg(vals(seasonGames, cat))
-    if (last15.length >= 10 && s > 0) {
-      const ratio = l / s
-      const up = ratio >= 1.15
-      const down = ratio <= 0.85
-      if ((up && over) || (down && !over)) {
-        edges.push({
-          description: `Averaging ${l.toFixed(1)} ${cat} over the last ${last15.length} games against ${s.toFixed(1)} for the season — ${up ? 'ascending trajectory — above season average' : 'declining trajectory — below season average'}${stage && ((up && stage.stage === 'ascending') || (down && stage.stage === 'declining')) ? `, consistent with a ${stage.stage === 'ascending' ? 'young, rising' : 'veteran'} player` : ''}`,
-          category: 'recent_form',
-          horizon: 'last15',
-          layer: 'statistical',
-          relevanceScore: Math.min(1, 0.45 + Math.abs(ratio - 1) * 1.6),
-          supportingData: `${up ? '+' : ''}${Math.round((ratio - 1) * 100)}% against the season average`,
-          weight: 0.12,
-          ageDays: daysSince(games[0].date),
-          quality: q(3, 2, 3, 2),
-          sample: last15.length,
-          metrics: { avg: l, n: last15.length },
-        })
-      } else if ((up && !over) || (down && over)) conflicts++
+    const sAvg = avg(vals(seasonGames, cat))
+    if (last15.length >= 10 && sAvg > 0) {
+      const ratio = l / sAvg
+      if ((ratio >= 1.15 && !over) || (ratio <= 0.85 && over)) conflicts++
     }
   }
-
-  // How the history is being read for this player.
-  if (stage && stage.stage !== 'prime') {
+  if (history.stage?.stage === 'declining' && over) {
     const hit = (gs: PlayerGameRecord[]) => {
       const r = gs.map((g) => playerHit(o, g)).filter((x): x is boolean => x !== null)
-      return r.length >= 15 ? { rate: r.filter(Boolean).length / r.length, n: r.length } : null
+      return r.length >= 15 ? r.filter(Boolean).length / r.length : null
     }
-    const seasonsRecent = Array.from(new Set(games.map((g) => g.season))).sort().reverse().slice(0, 2)
+    const recentSeasons = Array.from(new Set(games.map((g) => g.season))).sort().reverse().slice(0, 2)
     const career = hit(games)
-    const recent = hit(games.filter((g) => seasonsRecent.includes(g.season)))
-    const detail = stage.age ? ` (age ${stage.age}${stage.years ? `, year ${stage.years}` : ''})` : ''
-    if (stage.stage === 'declining' && career && recent && career.rate - recent.rate >= 0.1) {
-      edges.push({ description: `Career average reflects peak years — the recent two-season baseline is more predictive: ${Math.round(recent.rate * 100)}% over the last two seasons against ${Math.round(career.rate * 100)}% for the career${detail}`, category: 'role', horizon: 'career', layer: 'statistical', relevanceScore: 0.6, supportingData: stage.label, weight: 0, quality: q(3, 3, 2, 2) })
-      if (over) conflicts++
-    } else {
-      edges.push({ description: `${stage.stage === 'ascending' ? 'Ascending player' : 'Veteran'}${detail} — ${stage.stage === 'ascending' ? 'recent trajectory weighted heavily' : 'the last two seasons are the baseline'}`, category: 'role', horizon: 'tonight', layer: 'opportunity', relevanceScore: 0.55, supportingData: stage.label, weight: 0, quality: q(3, 3, 3, 1) })
-    }
+    const recent = hit(games.filter((g) => recentSeasons.includes(g.season)))
+    if (career !== null && recent !== null && career - recent >= 0.1) conflicts++
   }
   return { edges, conflicts }
 }

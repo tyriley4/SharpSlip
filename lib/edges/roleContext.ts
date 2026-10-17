@@ -1,9 +1,8 @@
-import { slugify } from '@/lib/players/slug'
 import { daysSince } from './historicalRates'
 import { q } from './evidenceFramework'
 import type { ModuleInput } from './modules/shared'
 import { expansionEvidence, stageAndTrajectory } from './roleExpansion'
-import type { Edge, Grade, ModuleOutput, PlayerGameRecord } from './types'
+import type { Edge, Grade, ModuleOutput } from './types'
 
 /**
  * Role change detection. A player's history describes the role he HAD; these checks look for signs that tonight's role is
@@ -34,9 +33,6 @@ const INFO = (description: string, supportingData: string, extra: Partial<Edge> 
 
 const dayOf = (iso: string) => iso.slice(0, 10)
 
-function lastN(games: PlayerGameRecord[], key: string, n: number) {
-  return games.slice(0, n).map((g) => g.values[key]).filter((v): v is number => typeof v === 'number')
-}
 
 export function roleModule({ outcome: o, game, history }: ModuleInput): RoleOutput {
   const edges: Edge[] = []
@@ -95,7 +91,7 @@ export function roleModule({ outcome: o, game, history }: ModuleInput): RoleOutp
       } else if (receiving && ['WR', 'TE', 'RB'].includes(position) && ['WR', 'TE'].includes(tp)) {
         text = `${t.player} (${tp}) is ${status} — he averaged ${t.usage.value} ${t.usage.label} per game, so target share is projected to rise and the prop line may not reflect it`
       }
-    } else if ((game.sport === 'nba' || game.sport === 'cbb' || game.sport === 'nhl') && t.usage && ['Points', 'Rebounds', 'Assists', 'Shots on Goal'].includes(o.category) && position !== 'G') {
+    } else if ((game.sport === 'nba' || game.sport === 'cbb' || game.sport === 'nhl') && t.usage && (game.sport !== 'nba' || t.usage.value >= 25) && (game.sport !== 'nhl' || (tp === 'D') === (position === 'D')) && ['Points', 'Rebounds', 'Assists', 'Shots on Goal'].includes(o.category) && position !== 'G') {
       text = `${t.player} is ${status} (averaging ${t.usage.value} ${t.usage.label}) — creates additional ${game.sport === 'nhl' ? 'ice time and chances' : 'minutes and usage'} for ${o.player.name}`
     }
     if (text) {
@@ -111,17 +107,6 @@ export function roleModule({ outcome: o, game, history }: ModuleInput): RoleOutp
   const traj = stageAndTrajectory({ outcome: o, game, history })
   edges.push(...exp.edges, ...traj.edges)
   conflicts += exp.conflicts + traj.conflicts
-
-  // ---- MLB lineup spot: more plate appearances and run chances at the top of the order.
-  if (game.sport === 'mlb' && game.mlb && ['Hits', 'Home Runs', 'Total Bases'].includes(o.category) && o.homeAway) {
-    const order = game.mlb.lineups[o.homeAway]
-    const slot = order.indexOf(slugify(o.player.name)) + 1
-    if (slot > 0) {
-      if (over && slot <= 3) edges.push({ description: `Batting ${slot === 1 ? 'leadoff' : slot === 2 ? 'second' : 'third'} tonight — the top of the order sees the most plate appearances and run-scoring chances`, category: 'role', layer: 'opportunity', relevanceScore: slot === 3 ? 0.55 : 0.65, supportingData: `Posted lineup, slot ${slot}`, weight: 0.1, ageDays: 0, quality: q(3, 3, 3, 1) })
-      else if (over && slot >= 7) conflicts++
-      else if (!over && slot >= 7) edges.push({ description: `Batting ${slot === 7 ? 'seventh' : slot === 8 ? 'eighth' : 'ninth'} tonight — fewer plate appearances and a lower run-production context`, category: 'role', layer: 'opportunity', relevanceScore: 0.55, supportingData: `Posted lineup, slot ${slot}`, weight: 0.1, ageDays: 0, quality: q(3, 3, 3, 1) })
-    }
-  }
 
   return { edges, conflicts, gradeCap }
 }

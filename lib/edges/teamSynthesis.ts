@@ -64,7 +64,7 @@ export function synthesisFor(outcome: BettingOutcome, s: Synthesis | undefined, 
     const t = s.teams[outcome.team.abbr]
     if (t && t.count >= 3) {
       multiplier = multiplierFor(t.count)
-      edges.push({ ...base, description: `Multiple individual matchup advantages converge for ${outcome.team.abbr} tonight — ${list(t.players.slice(0, 4))} each present favorable situations that collectively support ${outcome.type === 'moneyline' ? `${outcome.team.abbr} to win` : `${outcome.team.abbr} covering`}`, relevanceScore: Math.min(1, 0.55 + t.count * 0.08), supportingData: `${t.count} grade A/B player edges point the same way`, weight: 0.16, sample: t.count })
+      edges.push({ ...base, description: `${t.count} player props graded A or B for tonight's game point ${outcome.team.abbr}'s way (${list(t.players.slice(0, 4))}) — the individual matchups line up behind ${outcome.type === 'moneyline' ? `${outcome.team.abbr} to win` : `${outcome.team.abbr} covering`}`, relevanceScore: Math.min(1, 0.55 + t.count * 0.08), supportingData: `${t.count} grade A/B player edges point the same way`, weight: 0.16, sample: t.count })
     }
   }
 
@@ -73,7 +73,7 @@ export function synthesisFor(outcome: BettingOutcome, s: Synthesis | undefined, 
     const g = over ? s.overs : s.unders
     if (g.count >= 3 && g.team) {
       multiplier = multiplierFor(g.count)
-      edges.push({ ...base, description: over ? `Elevated offensive matchups, led by ${g.team}, suggest scoring above recent averages — ${list(g.players.slice(0, 4))} each carry grade A or B over cases, which supports the Over` : `Several players project below their usual output — ${list(g.players.slice(0, 4))} each carry grade A or B under cases, which supports the Under`, relevanceScore: Math.min(1, 0.55 + g.count * 0.08), supportingData: `${g.count} grade A/B player edges point the same way`, weight: 0.14, sample: g.count })
+      edges.push({ ...base, description: over ? `${g.count} player props graded A or B point to the Over tonight, led by ${g.team} (${list(g.players.slice(0, 4))}) — elevated offensive matchups across the game support scoring above the line` : `${g.count} player props graded A or B point to the Under tonight (${list(g.players.slice(0, 4))}) — several players project below their usual output, which supports the Under`, relevanceScore: Math.min(1, 0.55 + g.count * 0.08), supportingData: `${g.count} grade A/B player edges point the same way`, weight: 0.14, sample: g.count })
     }
   }
 

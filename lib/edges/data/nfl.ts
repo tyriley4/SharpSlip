@@ -4,12 +4,7 @@ import { normalizeNflAbbr } from '@/lib/nfl/divisions'
 import { getNFLWeeklyPlayerStatsExact } from '@/lib/nfl/api'
 import { fetchCsv } from '@/lib/nfl/fetchCsv'
 import { cached } from '@/lib/net/ttlCache'
-import { getTeamLinedGames } from '@/lib/odds/history'
 import { slugify } from '@/lib/players/slug'
-import { q } from '../evidenceFramework'
-import type { ModuleInput } from '../modules/shared'
-import { scriptOf } from '../modules/shared'
-import type { Edge, GameContext, ModuleOutput } from '../types'
 
 /**
  * NFL data connections. Weekly player stats and snap counts come from nflverse (targets, target share, carries and the
@@ -21,14 +16,6 @@ const RELEASES = 'https://github.com/nflverse/nflverse-data/releases/download'
 const num = (v: string | undefined) => {
   const n = Number(v)
   return v !== undefined && v !== '' && Number.isFinite(n) ? n : 0
-}
-const f1 = (n: number) => n.toFixed(1)
-const pctText = (r: number) => `${Math.round(r * 100)}%`
-const mean = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0)
-const ordinal = (n: number) => {
-  const s = ['th', 'st', 'nd', 'rd']
-  const v = n % 100
-  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`
 }
 
 export interface NflPlayerWeek {
@@ -101,7 +88,6 @@ export interface NflGameFacts {
   players: Record<string, NflPlayerFacts>
   vsPosition: Record<string, VsPosition>
   depth: Record<string, DepthFacts | null>
-  overs: { away: { over: number; of: number } | null; home: { over: number; of: number } | null }
 }
 
 type Row = Record<string, string>
@@ -230,15 +216,8 @@ async function loadDepth(abbr: string): Promise<DepthFacts | null> {
   })
 }
 
-async function overRecord(abbr: string, season: number): Promise<{ over: number; of: number } | null> {
-  const lined = await getTeamLinedGames('nfl', abbr, season, 8).catch(() => null)
-  const last = (lined ?? []).filter((g) => g.line?.total != null).slice(-8)
-  if (last.length < 3) return null
-  return { over: last.filter((g) => g.awayScore + g.homeScore > (g.line!.total as number)).length, of: last.length }
-}
-
 export async function loadNflGameFacts(away: string, home: string, season: number): Promise<NflGameFacts | null> {
-  const [rows, snaps, dAway, dHome, oAway, oHome] = await Promise.all([getNFLWeeklyPlayerStatsExact(season), loadSnaps(season), loadDepth(away), loadDepth(home), overRecord(away, season), overRecord(home, season)])
+  const [rows, snaps, dAway, dHome] = await Promise.all([getNFLWeeklyPlayerStatsExact(season), loadSnaps(season), loadDepth(away), loadDepth(home)])
   if (!rows || rows.length === 0) return null
   const teamRows = new Map<string, Row[]>()
   for (const r of rows) {
@@ -273,275 +252,5 @@ export async function loadNflGameFacts(away: string, home: string, season: numbe
       players[`${slug}|${team}`] = { name: rs[0].player_display_name, team, position: rs[0].position, games }
     }
   }
-  return { season, weeks: new Set(rows.map((r) => r.week)).size, players, vsPosition: buildVsPosition(rows), depth: { [away]: dAway, [home]: dHome }, overs: { away: oAway, home: oHome } }
-}
-
-// ---------------------------------------------------------------------------
-// Evidence
-// ---------------------------------------------------------------------------
-
-function playerOf(game: GameContext, o: ModuleInput['outcome']): NflPlayerFacts | null {
-  const facts = game.facts.nfl
-  if (!facts || !o.player) return null
-  return facts.players[`${slugify(o.player.name)}|${o.player.team}`] ?? null
-}
-
-/** WR, TE and RB receiving props: target share, snaps, the position-specific defense and the cornerback situation. */
-export function getReceiverEvidence({ outcome: o, game }: ModuleInput): ModuleOutput {
-  const edges: Edge[] = []
-  let conflicts = 0
-  if (o.type !== 'player_prop' || (o.category !== 'Receiving Yards' && o.category !== 'Receptions') || !o.player || !o.opponent) return { edges, conflicts }
-  const facts = game.facts.nfl
-  const p = playerOf(game, o)
-  if (!facts || !p) return { edges, conflicts }
-  const over = o.direction !== 'under'
-  const pos = (p.position === 'FB' || p.position === 'HB' ? 'RB' : p.position) as PosKey
-  const rec = p.games.slice(0, 4)
-
-  // 1. Target share over the last four games (targets as a share of the team's targets), against the season.
-  const shares = rec.map((g) => g.targetShare).filter((v): v is number => v !== null)
-  const seasonShares = p.games.map((g) => g.targetShare).filter((v): v is number => v !== null)
-  if (shares.length >= 4) {
-    const s4 = mean(shares)
-    const season = mean(seasonShares)
-    const floor = pos === 'WR' ? 0.2 : 0.15
-    const tg = mean(rec.map((g) => g.targets))
-    if (over && s4 >= floor) {
-      edges.push({
-        description: `Commands a ${pctText(s4)} target share over the last ${shares.length} games (${f1(tg)} targets per game; ${pctText(season)} across the season)${s4 - season >= 0.03 ? ' — the share is climbing' : ''}`,
-        category: 'role',
-        horizon: 'last7',
-        layer: 'opportunity',
-        relevanceScore: Math.min(1, 0.5 + (s4 - floor) * 3 + (s4 - season >= 0.03 ? 0.1 : 0)),
-        supportingData: `Targets by game: ${rec.map((g) => g.targets).join(', ')} (most recent first)`,
-        weight: 0.2,
-        ageDays: 7,
-        quality: q(3, 3, 3, 1),
-        sample: shares.length,
-        metrics: { rate: s4, avg: tg, n: shares.length },
-      })
-    } else if (over && s4 <= floor - 0.07) conflicts++
-    else if (!over && s4 <= floor - 0.06) edges.push({ description: `Target share has slipped to ${pctText(s4)} over the last ${shares.length} games (${pctText(season)} for the season)`, category: 'role', horizon: 'last7', layer: 'opportunity', relevanceScore: 0.6, supportingData: 'Fewer looks lowers the ceiling', weight: 0.14, ageDays: 7, quality: q(3, 3, 3, 1), sample: shares.length })
-  }
-
-  // 1b. Deep-target role: air-yards share and how the yardage is made (air yards per target, yards after catch per catch).
-  const ays = rec.map((g) => g.airYardsShare).filter((v): v is number => v !== null)
-  if (ays.length >= 4 && o.category === 'Receiving Yards') {
-    const a4 = mean(ays)
-    const tg = rec.reduce((n, g) => n + g.targets, 0)
-    const air = rec.reduce((n, g) => n + g.airYards, 0)
-    const yac = rec.reduce((n, g) => n + g.yac, 0)
-    const catches = rec.reduce((n, g) => n + g.rec, 0)
-    if (over && a4 >= 0.28) edges.push({ description: `Holds a ${pctText(a4)} share of his team's air yards over the last ${ays.length} games${tg > 0 ? ` (${f1(air / tg)} air yards per target${catches > 0 ? `, ${f1(yac / catches)} yards after the catch per reception` : ''})` : ''} — a downfield role that drives receiving yards`, category: 'role', horizon: 'last7', layer: 'opportunity', relevanceScore: Math.min(1, 0.5 + (a4 - 0.28) * 2), supportingData: 'nflverse weekly receiving data', weight: 0.12, ageDays: 7, quality: q(3, 3, 3, 1), sample: ays.length, metrics: { rate: a4, n: ays.length } })
-    else if (over && a4 <= 0.12) conflicts++
-  }
-
-  // 2. Snap share over the last three games.
-  const snaps = p.games.slice(0, 3).map((g) => g.snapPct).filter((v): v is number => v !== null)
-  if (snaps.length >= 3) {
-    const s = mean(snaps)
-    if (over && s >= 0.75) edges.push({ description: `Played ${pctText(s)} of offensive snaps over the last ${snaps.length} games — an every-down role`, category: 'role', horizon: 'last7', layer: 'opportunity', relevanceScore: Math.min(1, 0.5 + (s - 0.75) * 2), supportingData: `Snap share by game: ${p.games.slice(0, 3).map((g) => (g.snapPct === null ? '—' : pctText(g.snapPct))).join(', ')}`, weight: 0.12, ageDays: 7, quality: q(3, 3, 3, 1), sample: snaps.length, metrics: { rate: s, n: snaps.length } })
-    else if (over && s <= 0.5) conflicts++
-  }
-
-  // 3. The position-specific defense: yards and catches allowed to this position, not the whole secondary.
-  const v = facts.vsPosition[o.opponent]
-  if (v && (pos === 'WR' || pos === 'TE' || pos === 'RB')) {
-    const al = v.allowed[pos]
-    const rk = v.rank[pos]
-    const yards = o.category === 'Receiving Yards'
-    const rank = yards ? (pos === 'RB' ? 0 : rk.recYds) : rk.rec
-    const value = yards ? al.recYdsPg : al.recPg
-    if (rank > 0 && value > 0) {
-      const soft = rank <= 10
-      const tough = rank > v.of - 10
-      const label = pos === 'RB' ? 'running backs' : pos === 'TE' ? 'tight ends' : 'wide receivers'
-      if ((over && soft) || (!over && tough)) {
-        edges.push({
-          description: `${o.opponent} has allowed ${f1(value)} ${yards ? 'receiving yards' : 'receptions'} per game to ${label} — ${ordinal(soft ? rank : v.of - rank + 1)}-${soft ? 'most' : 'fewest'} in the NFL (${al.games} games)`,
-          category: 'matchup',
-          horizon: 'tonight',
-          layer: 'opportunity',
-          relevanceScore: Math.min(1, 0.55 + (soft ? 10 - rank : rank - (v.of - 10)) / 20),
-          supportingData: `Built from every ${label.slice(0, -1)} stat line against ${o.opponent} this season`,
-          weight: 0.22,
-          quality: q(3, 3, 2, al.games >= 5 ? 2 : 1),
-          sample: al.games,
-          metrics: { avg: value, n: al.games },
-        })
-      } else if ((over && tough) || (!over && soft)) conflicts++
-    }
-  }
-
-  // 4. The cornerback situation from the depth chart and injury designations.
-  const depth = game.facts.nfl?.depth[o.opponent]
-  if (depth && over && pos !== 'RB') {
-    const hurt = depth.cbs.filter((c) => c.status && /out|doubtful|injured reserve/i.test(c.status))
-    const limited = depth.cbs.filter((c) => c.status && /questionable|day-to-day|probable/i.test(c.status))
-    const slot = facts.depth[o.player.team]?.slots[slugify(o.player.name)]
-    const who = slot ? `${o.player.name} (${slot})` : o.player.name
-    if (hurt.length > 0) {
-      edges.push({
-        description: `${o.opponent}'s starting cornerback${hurt.length > 1 ? 's' : ''} ${hurt.map((c) => `${c.name} (${c.slot}, ${/doubtful/i.test(c.status ?? '') ? 'doubtful' : 'out'})`).join(' and ')} ${hurt.length > 1 ? 'are' : 'is'} on the injury report${limited.length ? `, with ${limited.map((c) => `${c.name} (${c.slot}) listed ${c.status?.toLowerCase()}`).join(' and ')}` : ''} — a thinner outside group for ${who}`,
-        category: 'situational',
-        horizon: 'tonight',
-        layer: 'situational',
-        relevanceScore: Math.min(1, 0.6 + 0.15 * hurt.length),
-        supportingData: 'ESPN depth chart and injury report',
-        weight: 0.16,
-        ageDays: 0,
-        quality: q(3, 3, 3, 1),
-      })
-    } else if (limited.length > 0) {
-      edges.push({ description: `${o.opponent}'s starting cornerback ${limited.map((c) => `${c.name} (${c.slot})`).join(' and ')} ${limited.length > 1 ? 'are' : 'is'} listed ${limited[0].status?.toLowerCase()} — his snaps and coverage are in question for ${who}`, category: 'situational', horizon: 'tonight', layer: 'situational', relevanceScore: 0.5, supportingData: 'ESPN depth chart and injury report', weight: 0.08, ageDays: 0, quality: q(3, 3, 3, 1) })
-    }
-  }
-  return { edges, conflicts }
-}
-
-/** RB rushing props: snap share, carries share, and the run defense against running backs specifically. */
-export function getRBRushingEvidence({ outcome: o, game }: ModuleInput): ModuleOutput {
-  const edges: Edge[] = []
-  let conflicts = 0
-  if (o.type !== 'player_prop' || o.category !== 'Rush Yards' || !o.player || !o.opponent) return { edges, conflicts }
-  const facts = game.facts.nfl
-  const p = playerOf(game, o)
-  if (!facts || !p) return { edges, conflicts }
-  const over = o.direction !== 'under'
-
-  const snaps = p.games.slice(0, 3).map((g) => g.snapPct).filter((v): v is number => v !== null)
-  if (snaps.length >= 3) {
-    const s = mean(snaps)
-    if (over && s >= 0.6) edges.push({ description: `Playing ${pctText(s)} of offensive snaps over the last ${snaps.length} games — ${s >= 0.7 ? 'the clear lead back' : 'a primary role in the backfield'}`, category: 'role', horizon: 'last7', layer: 'opportunity', relevanceScore: Math.min(1, 0.5 + (s - 0.55) * 1.6), supportingData: `Snap share by game: ${p.games.slice(0, 3).map((g) => (g.snapPct === null ? '—' : pctText(g.snapPct))).join(', ')}`, weight: 0.2, ageDays: 7, quality: q(3, 3, 3, 1), sample: snaps.length, metrics: { rate: s, n: snaps.length } })
-    else if (over && s <= 0.45) conflicts++
-    else if (!over && s <= 0.45) edges.push({ description: `Playing only ${pctText(s)} of offensive snaps over the last ${snaps.length} games — a committee role`, category: 'role', horizon: 'last7', layer: 'opportunity', relevanceScore: 0.6, supportingData: 'Snap share by game', weight: 0.16, ageDays: 7, quality: q(3, 3, 3, 1), sample: snaps.length })
-  }
-
-  // Carries and the share of the team's carries over the last four games.
-  const last4 = p.games.slice(0, 4)
-  if (last4.length >= 3) {
-    const carries = mean(last4.map((g) => g.carries))
-    const share = (() => {
-      let mine = 0
-      let team = 0
-      for (const g of last4) {
-        mine += g.carries
-        for (const other of Object.values(facts.players)) {
-          if (other.team !== p.team) continue
-          const og = other.games.find((x) => x.week === g.week)
-          if (og && other.position !== 'QB') team += og.carries
-        }
-      }
-      return team > 0 ? mine / team : null
-    })()
-    if (over && carries >= 12) edges.push({ description: `Averaging ${f1(carries)} carries over the last ${last4.length} games${share !== null ? ` — ${pctText(share)} of the team's designed running back workload` : ''}`, category: 'role', horizon: 'last7', layer: 'opportunity', relevanceScore: Math.min(1, 0.5 + (carries - 12) / 12), supportingData: `Carries by game: ${last4.map((g) => g.carries).join(', ')} (most recent first)`, weight: 0.14, ageDays: 7, quality: q(3, 3, 3, 1), sample: last4.length, metrics: { avg: carries, rate: share ?? undefined, n: last4.length } })
-  }
-
-  const v = facts.vsPosition[o.opponent]
-  if (v) {
-    const al = v.allowed.RB
-    const ypc = al.carriesPg > 0 ? al.rushYdsPg / al.carriesPg : 0
-    const rank = v.rank.RB.rushYds
-    const soft = rank <= 10
-    const tough = rank > v.of - 10
-    if (rank > 0 && ((over && soft) || (!over && tough))) {
-      edges.push({ description: `${o.opponent} has allowed ${f1(al.rushYdsPg)} rushing yards per game to running backs (${ypc.toFixed(1)} per carry) — ${ordinal(soft ? rank : v.of - rank + 1)}-${soft ? 'most' : 'fewest'} in the NFL`, category: 'matchup', horizon: 'tonight', layer: 'opportunity', relevanceScore: Math.min(1, 0.55 + (soft ? 10 - rank : rank - (v.of - 10)) / 20), supportingData: `${al.games} games, running back stat lines only`, weight: 0.22, quality: q(3, 3, 2, al.games >= 5 ? 2 : 1), sample: al.games, metrics: { avg: al.rushYdsPg, n: al.games } })
-    } else if (rank > 0 && ((over && tough) || (!over && soft))) conflicts++
-  }
-  return { edges, conflicts }
-}
-
-/** QB passing props: the defense against quarterbacks specifically, and recent pass volume. */
-export function getQBEvidence({ outcome: o, game }: ModuleInput): ModuleOutput {
-  const edges: Edge[] = []
-  let conflicts = 0
-  if (o.type !== 'player_prop' || !['Pass Yards', 'Completions', 'TD Passes'].includes(o.category ?? '') || !o.player || !o.opponent) return { edges, conflicts }
-  const facts = game.facts.nfl
-  const p = playerOf(game, o)
-  if (!facts) return { edges, conflicts }
-  const over = o.direction !== 'under'
-  const v = facts.vsPosition[o.opponent]
-  if (v) {
-    const al = v.allowed.QB
-    const rank = v.rank.QB.passYds
-    const soft = rank <= 10
-    const tough = rank > v.of - 10
-    if (rank > 0 && ((over && soft) || (!over && tough))) {
-      edges.push({ description: `${o.opponent} has allowed ${f1(al.passYdsPg)} passing yards per game to quarterbacks on a ${pctText(al.compPct)} completion rate — ${ordinal(soft ? rank : v.of - rank + 1)}-${soft ? 'most' : 'fewest'} yards in the NFL (${ordinal(v.rank.QB.compPct)}-most completions allowed)`, category: 'matchup', horizon: 'tonight', layer: 'opportunity', relevanceScore: Math.min(1, 0.55 + (soft ? 10 - rank : rank - (v.of - 10)) / 20), supportingData: `${al.games} games, quarterback stat lines only`, weight: 0.22, quality: q(3, 3, 2, al.games >= 5 ? 2 : 1), sample: al.games, metrics: { avg: al.passYdsPg, rate: al.compPct, n: al.games } })
-    } else if (rank > 0 && ((over && tough) || (!over && soft))) conflicts++
-  }
-  if (p) {
-    const last4 = p.games.slice(0, 4).filter((g) => g.att > 0)
-    if (last4.length >= 3) {
-      const att = mean(last4.map((g) => g.att))
-      if (over && att >= 36) edges.push({ description: `Averaging ${f1(att)} pass attempts over the last ${last4.length} games (${f1(mean(last4.map((g) => g.passYds)))} yards per game)`, category: 'role', horizon: 'last7', layer: 'opportunity', relevanceScore: Math.min(1, 0.5 + (att - 36) / 14), supportingData: `Attempts by game: ${last4.map((g) => g.att).join(', ')} (most recent first)`, weight: 0.12, ageDays: 7, quality: q(3, 3, 3, 1), sample: last4.length, metrics: { avg: att, n: last4.length } })
-    }
-  }
-  return { edges, conflicts }
-}
-
-/** Moneyline and spread: starters on either side who are out, from the depth charts and their injury designations. */
-export function getNflTeamEvidence({ outcome: o, game }: ModuleInput): ModuleOutput {
-  const edges: Edge[] = []
-  let conflicts = 0
-  if ((o.type !== 'moneyline' && o.type !== 'spread') || !o.team) return { edges, conflicts }
-  const facts = game.facts.nfl
-  const mine = facts?.depth[o.team.abbr]
-  const theirs = facts?.depth[o.team.opponent]
-  if (!mine || !theirs) return { edges, conflicts }
-  const sum = (xs: OutStarter[]) => xs.reduce((n, x) => n + x.weight, 0)
-  const gap = sum(theirs.outStarters) - sum(mine.outStarters)
-  const list = (xs: OutStarter[]) => xs.slice(0, 4).map((x) => `${x.name} (${x.pos})`).join(', ')
-  if (gap >= 2 && theirs.outStarters.length > 0) {
-    edges.push({
-      description: `${o.team.opponent} is without ${list(theirs.outStarters)} while ${mine.outStarters.length ? `${o.team.abbr} is missing ${list(mine.outStarters)}` : `${o.team.abbr} has no starters ruled out`}`,
-      category: 'situational',
-      horizon: 'tonight',
-      layer: 'situational',
-      relevanceScore: Math.min(1, 0.5 + gap / 6),
-      supportingData: 'ESPN depth charts and injury report',
-      weight: 0.14,
-      ageDays: 0,
-      quality: q(3, 3, 3, 1),
-    })
-  } else if (gap <= -2) conflicts++
-  return { edges, conflicts }
-}
-
-/** Game totals: both teams' recent scoring, the spread's implied game flow and the over record. */
-export function getGameTotalEvidence({ outcome: o, game }: ModuleInput): ModuleOutput {
-  const edges: Edge[] = []
-  let conflicts = 0
-  if (o.type !== 'total' || o.threshold === undefined) return { edges, conflicts }
-  const over = o.direction !== 'under'
-  const rec = (abbr: string) => (game.results[abbr] ?? []).slice(0, 7)
-  const a = rec(game.away)
-  const h = rec(game.home)
-  if (a.length >= 3 && h.length >= 3) {
-    const aFor = mean(a.map((g) => g.us))
-    const aAg = mean(a.map((g) => g.them))
-    const hFor = mean(h.map((g) => g.us))
-    const hAg = mean(h.map((g) => g.them))
-    const projected = (aFor + hAg) / 2 + (hFor + aAg) / 2
-    const gap = projected - o.threshold
-    if ((over && gap >= 2.5) || (!over && gap <= -2.5)) {
-      edges.push({ description: `Over their last ${Math.min(a.length, h.length)} games ${game.away} scores ${f1(aFor)} and allows ${f1(aAg)}, while ${game.home} scores ${f1(hFor)} and allows ${f1(hAg)} — the two profiles project to ${f1(projected)} combined points against a line of ${o.threshold}`, category: 'recent_form', horizon: 'last7', layer: 'statistical', relevanceScore: Math.min(1, 0.45 + Math.abs(gap) / 14), supportingData: 'Recent scoring for and against, both teams', weight: 0.16, ageDays: 7, quality: q(3, 3, 3, 1), sample: Math.min(a.length, h.length) })
-    } else if ((over && gap <= -2.5) || (!over && gap >= 2.5)) conflicts++
-  }
-  const { margin } = scriptOf(game, game.home)
-  if (margin !== null) {
-    const spread = Math.abs(margin)
-    if (!over && spread >= 10) edges.push({ description: `A ${spread.toFixed(1)}-point spread points to a one-sided game — the leader tends to run the clock, which trims the total`, category: 'role', horizon: 'tonight', layer: 'opportunity', relevanceScore: 0.55, supportingData: 'Spread-implied game flow', weight: 0.06, ageDays: 0, quality: q(2, 2, 3, 1) })
-    else if (over && spread <= 3 && o.threshold >= 46) edges.push({ description: `A ${spread.toFixed(1)}-point spread signals a close game — both offenses stay aggressive for longer, which favors scoring`, category: 'role', horizon: 'tonight', layer: 'opportunity', relevanceScore: 0.5, supportingData: 'Spread-implied game flow', weight: 0.06, ageDays: 0, quality: q(2, 2, 3, 1) })
-  }
-  const oa = game.facts.nfl?.overs.away
-  const oh = game.facts.nfl?.overs.home
-  if (oa && oh) {
-    const rate = (oa.over + oh.over) / (oa.of + oh.of)
-    if ((over && rate >= 0.65) || (!over && rate <= 0.35)) {
-      const n = over ? oa.over + oh.over : oa.of + oh.of - oa.over - oh.over
-      edges.push({ description: `The ${over ? 'over' : 'under'} has hit in ${n} of the last ${oa.of + oh.of} games for these two teams combined`, category: 'recent_form', horizon: 'last15', layer: 'statistical', relevanceScore: Math.min(1, 0.4 + Math.abs(rate - 0.5) * 1.6), supportingData: "Against each game's closing total", weight: 0.1, ageDays: 7, quality: q(3, 2, 3, 1), sample: oa.of + oh.of })
-    }
-  }
-  return { edges, conflicts }
+  return { season, weeks: new Set(rows.map((r) => r.week)).size, players, vsPosition: buildVsPosition(rows), depth: { [away]: dAway, [home]: dHome } }
 }

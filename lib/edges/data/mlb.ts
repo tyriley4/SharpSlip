@@ -1,12 +1,8 @@
+import { findMlbPlayerIdBySlug } from '@/lib/mlb/playerLookup'
 import { getMlbTeamsIndex } from '@/lib/mlb/teams'
 import { cached } from '@/lib/net/ttlCache'
-import { getTeamLinedGames } from '@/lib/odds/history'
 import { slugify } from '@/lib/players/slug'
 import { mapWithConcurrency } from '@/lib/utils/concurrency'
-import { q } from '../evidenceFramework'
-import { daysSince } from '../historicalRates'
-import type { ModuleInput } from '../modules/shared'
-import type { Edge, GameContext, ModuleOutput } from '../types'
 import { loadMlbGameInfo, type MlbGameInfo } from './mlbGame'
 
 /**
@@ -54,8 +50,10 @@ export interface StartLine {
   ip: number
   h: number
   er: number
+  ab: number
   bb: number
   k: number
+  hr: number
   win: boolean
   home: boolean
   playoff: boolean
@@ -110,12 +108,15 @@ export interface TeamRecent {
 
 export interface BullpenFacts {
   team: string
-  /** Relief innings thrown in the series games already played. */
-  seriesInnings: number
-  games: number
+  /** Relief innings thrown in the team's games over the last two days. */
   lastTwoDaysInnings: number
+  /** Games behind that figure. */
+  games: number
   /** Relievers who threw yesterday. */
   usedYesterday: string[]
+  /** Season relief ERA and innings (null until the split is published). */
+  era: number | null
+  ip: number
 }
 
 export interface SeriesFacts {
@@ -136,15 +137,24 @@ export interface TeamHandSplits {
   vr: { kPct: number; avg: number; ops: string; pa: number } | null
 }
 
+/** A hitter who is out tonight and was a real bat in the lineup (wRC+ above 110 over a meaningful sample). */
+export interface KeyBatOut {
+  name: string
+  position: string
+  wrcPlus: number
+  pa: number
+  designation: string
+}
+
 export interface MlbGameFacts {
+  /** Impact bats missing from each team (hitters only; relievers and bench bats are never listed). */
+  keyBatsOut: { away: KeyBatOut[]; home: KeyBatOut[] }
   teamVsHand: { away: TeamHandSplits; home: TeamHandSplits }
   series: SeriesFacts | null
   starters: { away: StarterFacts | null; home: StarterFacts | null }
   lineups: { away: LineupFacts | null; home: LineupFacts | null }
   bullpen: { away: BullpenFacts | null; home: BullpenFacts | null }
   recent: { away: { d7: TeamRecent | null; d15: TeamRecent | null }; home: { d7: TeamRecent | null; d15: TeamRecent | null } }
-  /** Over results across each team's last lined games (only when closing lines are on file). */
-  overs: { away: { over: number; of: number } | null; home: { over: number; of: number } | null }
 }
 
 // ---------------------------------------------------------------------------
@@ -200,7 +210,7 @@ export async function loadStarterFacts(id: number, name: string, opponentTeamId:
       const h = person?.people?.[0]?.pitchHand?.code
       const toLine = (s: RawSplit, playoff: boolean): StartLine | null => {
         if ((s.stat.gamesStarted ?? 0) < 1) return null
-        return { date: s.date ?? '', opp: teams?.get(s.opponent?.id ?? 0)?.abbr ?? '', ip: ip(s.stat.inningsPitched), h: s.stat.hits ?? 0, er: s.stat.earnedRuns ?? 0, bb: s.stat.baseOnBalls ?? 0, k: s.stat.strikeOuts ?? 0, win: !!s.isWin, home: !!s.isHome, playoff }
+        return { date: s.date ?? '', opp: teams?.get(s.opponent?.id ?? 0)?.abbr ?? '', ip: ip(s.stat.inningsPitched), h: s.stat.hits ?? 0, er: s.stat.earnedRuns ?? 0, ab: s.stat.atBats ?? 0, bb: s.stat.baseOnBalls ?? 0, k: s.stat.strikeOuts ?? 0, hr: s.stat.homeRuns ?? 0, win: !!s.isWin, home: !!s.isHome, playoff }
       }
       // Starts before tonight only: a game already under way must not feed its own evidence.
       const starts = [...splitsOf(reg).map((s) => toLine(s, false)), ...splitsOf(post).map((s) => toLine(s, true))].filter((x): x is StartLine => x !== null && x.date < officialDate).sort((a, b) => b.date.localeCompare(a.date))
@@ -301,57 +311,67 @@ export async function loadTeamRecent(teamId: number, officialDate: string, days:
 }
 
 interface Boxscore {
-  teams?: Record<'away' | 'home', { team?: { id: number }; pitchers?: number[]; players?: Record<string, { person?: { fullName?: string }; stats?: { pitching?: { inningsPitched?: string; numberOfPitches?: number } } }> }>
+  teams?: Record<'away' | 'home', { team?: { id: number }; pitchers?: number[]; players?: Record<string, { person?: { fullName?: string }; stats?: { pitching?: { inningsPitched?: string } } }> }>
 }
 
-/** Relief usage in the series games already played, from each game's boxscore (final games never change, so cached long). */
+/** One team's relief use over the two days before tonight, from the boxscores of the games it played (final games never change). */
+async function loadTeamBullpen(teamId: number, label: string, officialDate: string, year: number): Promise<BullpenFacts | null> {
+  return cached(`edges:mlbpen2:${teamId}:${officialDate}`, 3600, async () => {
+    const sched = await get<{ dates?: { games: { gamePk: number; officialDate: string; status: { abstractGameState: string } }[] }[] }>(
+      `${API}/schedule?sportId=1&teamId=${teamId}&startDate=${addDays(officialDate, -2).toISOString().slice(0, 10)}&endDate=${addDays(officialDate, -1).toISOString().slice(0, 10)}&gameType=R,D,L,W,F`,
+      1800
+    )
+    const games = (sched?.dates ?? []).flatMap((d) => d.games).filter((g) => g.status.abstractGameState === 'Final' && g.officialDate < officialDate)
+    const [split] = await Promise.all([get<StatsResp>(`${API}/teams/${teamId}/stats?stats=statSplits&group=pitching&sitCodes=rp&season=${year}`)])
+    const rp = splitsOf(split).find((x) => x.split?.code === 'rp')?.stat
+    const rpIp = ip(rp?.inningsPitched)
+    const era = rp && rpIp >= 20 ? ((rp.earnedRuns ?? 0) * 9) / rpIp : null
+    const boxes = await mapWithConcurrency(games, 3, async (g) => ({ g, box: (await get<Boxscore>(`${API}/game/${g.gamePk}/boxscore`, 86400)) ?? (await get<Boxscore>(`${API}/game/${g.gamePk}/boxscore`, 0)) }))
+    // A missing boxscore would understate the workload, so the whole read is skipped (and not cached) rather than half-reported.
+    if (boxes.some((b) => !b.box)) return null
+    let lastTwo = 0
+    const yesterday = new Set<string>()
+    for (const { g, box } of boxes) {
+      const side = box?.teams?.away?.team?.id === teamId ? 'away' : 'home'
+      const t = box?.teams?.[side]
+      if (!t?.pitchers) continue
+      const daysBefore = Math.round((Date.parse(officialDate) - Date.parse(g.officialDate)) / 86400000)
+      t.pitchers.slice(1).forEach((pid) => {
+        const pl = t.players?.[`ID${pid}`]
+        lastTwo += ip(pl?.stats?.pitching?.inningsPitched)
+        if (daysBefore === 1 && pl?.person?.fullName) yesterday.add(pl.person.fullName)
+      })
+    }
+    return { team: label, lastTwoDaysInnings: lastTwo, games: boxes.length, usedYesterday: Array.from(yesterday), era, ip: rpIp } satisfies BullpenFacts
+  })
+}
+
 export async function loadBullpens(info: MlbGameInfo, away: string, home: string): Promise<{ away: BullpenFacts | null; home: BullpenFacts | null }> {
-  if (!info.series || info.gameType === 'R') return { away: null, home: null }
-  return (
-    (await cached(`edges:mlbpen:${info.teamIds.away}:${info.teamIds.home}:${info.officialDate}`, 3600, async () => {
-      const sched = await get<{ dates?: { date: string; games: { gamePk: number; officialDate: string; seriesDescription?: string; status: { abstractGameState: string }; teams: { away: { team: { id: number } }; home: { team: { id: number } } } }[] }[] }>(
-        `${API}/schedule?sportId=1&teamId=${info.teamIds.away}&startDate=${addDays(info.officialDate, -10).toISOString().slice(0, 10)}&endDate=${addDays(info.officialDate, -1).toISOString().slice(0, 10)}&gameType=D,L,W,F`,
-        1800
-      )
-      const games = (sched?.dates ?? [])
-        .flatMap((d) => d.games)
-        .filter((g) => g.status.abstractGameState === 'Final' && g.seriesDescription === info.seriesDescription && [g.teams.away.team.id, g.teams.home.team.id].includes(info.teamIds.home))
-      if (games.length === 0) return { away: null, home: null }
-      const boxes = await mapWithConcurrency(games, 3, async (g) => ({ g, box: (await get<Boxscore>(`${API}/game/${g.gamePk}/boxscore`, 86400)) ?? (await get<Boxscore>(`${API}/game/${g.gamePk}/boxscore`, 0)) }))
-      // A missing boxscore would understate the workload, so the whole read is skipped (and not cached) rather than half-reported.
-      if (boxes.some((b) => !b.box)) return null
-      const build = (teamId: number, label: string): BullpenFacts => {
-        let seriesInnings = 0
-        let lastTwo = 0
-        const yesterday = new Set<string>()
-        for (const { g, box } of boxes) {
-          const side = box?.teams?.away?.team?.id === teamId ? 'away' : 'home'
-          const t = box?.teams?.[side]
-          if (!t?.pitchers) continue
-          const daysBefore = Math.round((Date.parse(info.officialDate) - Date.parse(g.officialDate)) / 86400000)
-          t.pitchers.slice(1).forEach((pid) => {
-            const p = t.players?.[`ID${pid}`]
-            const inn = ip(p?.stats?.pitching?.inningsPitched)
-            seriesInnings += inn
-            if (daysBefore <= 2) lastTwo += inn
-            if (daysBefore === 1 && p?.person?.fullName) yesterday.add(p.person.fullName)
-          })
-        }
-        return { team: label, seriesInnings, games: boxes.length, lastTwoDaysInnings: lastTwo, usedYesterday: Array.from(yesterday) }
-      }
-      return { away: build(info.teamIds.away, away), home: build(info.teamIds.home, home) }
-    })) ?? { away: null, home: null }
-  )
+  const year = Number(info.officialDate.slice(0, 4)) || new Date().getUTCFullYear()
+  const [a, h] = await Promise.all([loadTeamBullpen(info.teamIds.away, away, info.officialDate, year), loadTeamBullpen(info.teamIds.home, home, info.officialDate, year)])
+  return { away: a, home: h }
 }
 
-async function overRecord(abbr: string, year: number): Promise<{ over: number; of: number } | null> {
-  const lined = await getTeamLinedGames('mlb', abbr, year, 10).catch(() => null)
-  const last = (lined ?? []).filter((g) => g.line?.total != null).slice(-10)
-  if (last.length < 8) return null
-  return { over: last.filter((g) => g.awayScore + g.homeScore > (g.line!.total as number)).length, of: last.length }
+const PITCHER_POSITIONS = new Set(['SP', 'RP', 'P', 'CL'])
+
+/** For each hitter who is out or doubtful, his wRC+ this season; only those above 110 (with 100+ plate appearances) matter. */
+async function loadKeyBatsOut(injuries: { team: string; player: string; position: string; designation: string }[], team: string, year: number): Promise<KeyBatOut[]> {
+  const out = injuries.filter((i) => i.team === team && ['out', 'doubtful', 'ir'].includes(i.designation) && !PITCHER_POSITIONS.has(i.position.toUpperCase())).slice(0, 6)
+  const rows = await mapWithConcurrency(out, 3, async (i): Promise<KeyBatOut | null> => {
+    const found = await findMlbPlayerIdBySlug(slugify(i.player)).catch(() => null)
+    if (!found) return null
+    const r = await cached(`edges:mlbwrc:${found.id}:${year}`, 6 * 3600, async () => {
+      const [sab, hit] = await Promise.all([get<{ stats?: { splits?: { stat: { wRcPlus?: number } }[] }[] }>(`${API}/people/${found.id}/stats?stats=sabermetrics&group=hitting&season=${year}`), get<StatsResp>(`${API}/people/${found.id}/stats?stats=season&group=hitting&season=${year}`)])
+      const w = sab?.stats?.[0]?.splits?.[0]?.stat?.wRcPlus
+      const pa = splitsOf(hit)[0]?.stat.plateAppearances ?? 0
+      return w !== undefined ? { wrc: w, pa } : null
+    })
+    return r && r.wrc > 110 && r.pa >= 100 ? { name: found.fullName, position: i.position, wrcPlus: Math.round(r.wrc), pa: r.pa, designation: i.designation } : null
+  })
+  return rows.filter((x): x is KeyBatOut => x !== null)
 }
 
-export async function loadMlbGameFacts(info: MlbGameInfo | null, away: string, home: string): Promise<MlbGameFacts | null> {
+export async function loadMlbGameFacts(info: MlbGameInfo | null, away: string, home: string, injuries: { team: string; player: string; position: string; designation: string }[] = []): Promise<MlbGameFacts | null> {
   if (!info) return null
   const year = Number(info.officialDate.slice(0, 4)) || new Date().getUTCFullYear()
   const { probables, teamIds, lineupPlayers } = info
@@ -359,7 +379,8 @@ export async function loadMlbGameFacts(info: MlbGameInfo | null, away: string, h
     probables.away ? loadStarterFacts(probables.away.id, probables.away.name, teamIds.home, info.officialDate, year) : Promise.resolve(null),
     probables.home ? loadStarterFacts(probables.home.id, probables.home.name, teamIds.away, info.officialDate, year) : Promise.resolve(null),
   ])
-  const [lAway, lHome, pens, awayD7, awayD15, homeD7, homeD15, oAway, oHome, tAway, tHome] = await Promise.all([
+  const [kbAway, kbHome] = await Promise.all([loadKeyBatsOut(injuries, away, year), loadKeyBatsOut(injuries, home, year)])
+  const [lAway, lHome, pens, awayD7, awayD15, homeD7, homeD15, tAway, tHome] = await Promise.all([
     sHome ? loadLineupFacts(away, lineupPlayers.away, { id: sHome.id, name: sHome.name, hand: sHome.hand }, year) : Promise.resolve(null),
     sAway ? loadLineupFacts(home, lineupPlayers.home, { id: sAway.id, name: sAway.name, hand: sAway.hand }, year) : Promise.resolve(null),
     loadBullpens(info, away, home),
@@ -367,8 +388,6 @@ export async function loadMlbGameFacts(info: MlbGameInfo | null, away: string, h
     loadTeamRecent(teamIds.away, info.officialDate, 15, year),
     loadTeamRecent(teamIds.home, info.officialDate, 7, year),
     loadTeamRecent(teamIds.home, info.officialDate, 15, year),
-    overRecord(away, year),
-    overRecord(home, year),
     loadTeamHandSplits(teamIds.away, year),
     loadTeamHandSplits(teamIds.home, year),
   ])
@@ -376,304 +395,7 @@ export async function loadMlbGameFacts(info: MlbGameInfo | null, away: string, h
   const series: SeriesFacts | null = s
     ? { description: s.description, short: s.short, result: s.result, gameNumber: s.gameNumber, totalGames: s.totalGames, leader: s.leaderId === null ? null : s.leaderId === teamIds.away ? away : home, leaderWins: s.wins, trailWins: s.losses, isOver: s.isOver }
     : null
-  return { teamVsHand: { away: tAway, home: tHome }, series, starters: { away: sAway, home: sHome }, lineups: { away: lAway, home: lHome }, bullpen: pens, recent: { away: { d7: awayD7, d15: awayD15 }, home: { d7: homeD7, d15: homeD15 } }, overs: { away: oAway, home: oHome } }
+  return { keyBatsOut: { away: kbAway, home: kbHome }, teamVsHand: { away: tAway, home: tHome }, series, starters: { away: sAway, home: sHome }, lineups: { away: lAway, home: lHome }, bullpen: pens, recent: { away: { d7: awayD7, d15: awayD15 }, home: { d7: homeD7, d15: homeD15 } } }
 }
 
 export { loadMlbGameInfo }
-
-// ---------------------------------------------------------------------------
-// Evidence
-// ---------------------------------------------------------------------------
-
-const f1 = (n: number) => n.toFixed(1)
-const avgText = (a: number) => a.toFixed(3).replace(/^0/, '')
-const mean = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : 0)
-
-function leagueKPct(game: GameContext): number | null {
-  const vals = Object.values(game.defense)
-    .map((d) => d['Strikeout rate']?.value)
-    .filter((v): v is number => typeof v === 'number')
-  return vals.length >= 20 ? mean(vals) : null
-}
-
-/** Evidence for a pitcher's strikeout prop: the last five starts, the lineup he faces, and how he does in this setting. */
-export function getStarterEvidence({ outcome: o, game }: ModuleInput): ModuleOutput {
-  const edges: Edge[] = []
-  let conflicts = 0
-  const facts = game.facts.mlb
-  if (!facts || o.type !== 'player_prop' || o.category !== 'Strikeouts' || o.threshold === undefined || !o.player) return { edges, conflicts }
-  const over = o.direction !== 'under'
-  const line = o.threshold
-  const slug = slugify(o.player.name)
-  const side = facts.starters.away?.slug === slug ? 'away' : facts.starters.home?.slug === slug ? 'home' : null
-  const starter = side ? facts.starters[side] : null
-  if (!side || !starter) return { edges, conflicts }
-  const oppSide = side === 'away' ? 'home' : 'away'
-  const opp = oppSide === 'home' ? game.home : game.away
-  const nounLine = `${over ? 'Over' : 'Under'} ${line}`
-
-  // 1. Last five starts, with innings, so the strikeout totals are read against how deep he goes.
-  const last5 = starter.starts.slice(0, 5)
-  if (last5.length >= 3) {
-    const ks = last5.map((s) => s.k)
-    const hits = ks.filter((k) => (over ? k > line : k < line)).length
-    const age = daysSince(last5[0].date)
-    const post = last5.filter((s) => s.playoff).length
-    if (hits / last5.length >= 0.6 || (over ? mean(ks) > line : mean(ks) < line)) {
-      edges.push({
-        description: `Last ${last5.length} starts: ${ks.join(', ')} strikeouts (most recent first), clearing ${nounLine} in ${hits} of ${last5.length}, averaging ${f1(mean(last5.map((s) => s.ip)))} innings per start${post ? ` (${post} in the postseason)` : ''}`,
-        category: 'recent_form',
-        horizon: 'last30',
-        layer: 'statistical',
-        relevanceScore: Math.min(1, 0.4 + (hits / last5.length - 0.5) * 1.2),
-        supportingData: last5.map((s) => `${s.k} K, ${f1(s.ip)} IP vs ${s.opp}`).join(' · '),
-        weight: 0.18,
-        ageDays: age,
-        quality: q(3, 3, 3, last5.length >= 5 ? 1 : 0),
-        sample: last5.length,
-        metrics: { rate: hits / last5.length, avg: mean(ks), n: last5.length },
-      })
-    } else if (hits / last5.length <= 0.2) conflicts++
-  }
-
-  // 2. The lineup he faces tonight, against his handedness.
-  const lineup = facts.lineups[oppSide]
-  const base = leagueKPct(game)
-  // No lineup posted yet: the team's strikeout rate against this handedness stands in.
-  const teamHand = starter.hand ? facts.teamVsHand[oppSide][starter.hand === 'L' ? 'vl' : 'vr'] : null
-  if ((!lineup || lineup.kPctVsHand == null) && teamHand && base !== null && starter.hand) {
-    const gap = teamHand.kPct - base
-    if ((over && gap >= 1.5) || (!over && gap <= -1.5)) {
-      edges.push({
-        description: `${opp} strikes out in ${f1(teamHand.kPct)}% of plate appearances against ${starter.hand === 'L' ? 'left-handed' : 'right-handed'} pitching this season (${teamHand.pa} PA) — ${f1(Math.abs(gap))} points ${gap > 0 ? 'above' : 'below'} the league rate of ${f1(base)}%; the lineup is not posted yet`,
-        category: 'matchup',
-        horizon: 'season',
-        layer: 'opportunity',
-        relevanceScore: Math.min(1, 0.5 + Math.abs(gap) / 8),
-        supportingData: 'Team splits by pitcher handedness',
-        weight: 0.18,
-        quality: q(3, 3, 2, 3),
-        sample: teamHand.pa,
-      })
-    } else if ((over && gap <= -1.5) || (!over && gap >= 1.5)) conflicts++
-  }
-  if (lineup?.kPctVsHand != null && base !== null && starter.hand) {
-    const gap = lineup.kPctVsHand - base
-    const handWord = starter.hand === 'L' ? 'left-handed' : 'right-handed'
-    const mix = `${lineup.lefties} of ${lineup.batters.length} bat left-handed against ${starter.hand === 'L' ? 'a lefty' : 'a righty'}`
-    if ((over && gap >= 1.5) || (!over && gap <= -1.5)) {
-      edges.push({
-        description: `${opp}'s announced lineup strikes out in ${f1(lineup.kPctVsHand)}% of plate appearances against ${handWord} pitching (${lineup.paVsHand} PA this season) — ${f1(Math.abs(gap))} points ${gap > 0 ? 'above' : 'below'} the league rate of ${f1(base)}%; ${mix}`,
-        category: 'matchup',
-        horizon: 'tonight',
-        layer: 'opportunity',
-        relevanceScore: Math.min(1, 0.55 + Math.abs(gap) / 8),
-        supportingData: 'Tonight\'s lineup, season splits against this handedness',
-        weight: 0.24,
-        quality: q(3, 3, 3, lineup.paVsHand >= 400 ? 3 : 2),
-        sample: lineup.paVsHand,
-        metrics: { rate: lineup.kPctVsHand / 100, n: lineup.paVsHand },
-      })
-    } else if ((over && gap <= -1.5) || (!over && gap >= 1.5)) conflicts++
-  }
-
-  // 3. Career numbers of tonight's batters against him.
-  if (lineup && lineup.facedCount >= 3 && lineup.facedPa >= 20 && lineup.facedAvg !== null && lineup.facedKPct !== null) {
-    const supportsOver = lineup.facedKPct >= 25 || lineup.facedAvg <= 0.22
-    const supportsUnder = lineup.facedKPct <= 17 || lineup.facedAvg >= 0.285
-    if ((over && supportsOver) || (!over && supportsUnder)) {
-      edges.push({
-        description: `${lineup.facedCount} of ${lineup.batters.length} starters have faced ${starter.name} (${lineup.facedPa} career plate appearances) — the group is batting ${avgText(lineup.facedAvg)} with a ${f1(lineup.facedKPct)}% strikeout rate in those matchups`,
-        category: 'h2h',
-        horizon: 'career_vs_opp',
-        layer: 'statistical',
-        relevanceScore: Math.min(1, 0.5 + lineup.facedPa / 200),
-        supportingData: 'Career batter-vs-pitcher results, minimum five plate appearances each',
-        weight: 0.14,
-        seasonsAgo: 1,
-        quality: q(3, 3, 1, lineup.facedPa >= 40 ? 3 : 2),
-        sample: lineup.facedPa,
-        metrics: { rate: lineup.facedKPct / 100, avg: lineup.facedAvg, n: lineup.facedPa },
-      })
-    } else if ((over && supportsUnder) || (!over && supportsOver)) conflicts++
-  }
-
-  // 4. His best-supported context split: home/road, day/night.
-  const season = starter.season
-  if (season && season.ip >= 25) {
-    const picks: { label: string; sp: PitchSplit | undefined }[] = [
-      { label: starter.hand && game.home === o.player.team ? 'at home' : 'on the road', sp: starter.splits[game.home === o.player.team ? 'h' : 'a'] },
-    ]
-    const best = picks.filter((p) => p.sp && p.sp.ip >= 20).map((p) => ({ ...p, gap: (p.sp!.k9 - season.k9) / season.k9 })).sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap))[0]
-    if (best && ((over && best.gap >= 0.12) || (!over && best.gap <= -0.12))) {
-      edges.push({
-        description: `${best.label.charAt(0).toUpperCase()}${best.label.slice(1)} this season ${starter.name} strikes out ${f1(best.sp!.k9)} per nine over ${f1(best.sp!.ip)} innings, against ${f1(season.k9)} overall`,
-        category: 'hit_rate',
-        horizon: 'season',
-        layer: 'statistical',
-        relevanceScore: Math.min(1, 0.45 + Math.abs(best.gap)),
-        supportingData: `${f1(best.sp!.era)} ERA in this split`,
-        weight: 0.1,
-        quality: q(3, 2, 2, best.sp!.ip >= 40 ? 3 : 2),
-        sample: Math.round(best.sp!.ip),
-      })
-    }
-  }
-
-  // 5. Career against tonight's team.
-  const vs = starter.vsTeam
-  if (vs && vs.games >= 2 && season && season.kPct > 0) {
-    const gap = (vs.kPct - season.kPct) / season.kPct
-    if ((over && gap >= 0.1) || (!over && gap <= -0.1)) {
-      edges.push({
-        description: `In ${vs.games} career games against ${opp}, hitters have batted ${avgText(vs.avg)} against ${starter.name} with a ${f1(vs.kPct)}% strikeout rate over ${vs.pa} plate appearances (${f1(season.kPct)}% this season)`,
-        category: 'h2h',
-        horizon: 'career_vs_opp',
-        layer: 'statistical',
-        relevanceScore: Math.min(1, 0.45 + Math.abs(gap)),
-        supportingData: 'Career, all seasons',
-        weight: 0.12,
-        seasonsAgo: 1,
-        quality: q(3, 3, 1, vs.pa >= 60 ? 3 : 2),
-        sample: vs.games,
-      })
-    }
-  }
-
-  // 6. Rest.
-  if (starter.restDays !== null && starter.restDays <= 3) {
-    if (!over) edges.push({ description: `${starter.name} is working on ${starter.restDays} days of rest — shorter rest tends to cut innings and strikeouts`, category: 'situational', horizon: 'tonight', layer: 'situational', relevanceScore: 0.6, supportingData: 'Days since his last start', weight: 0.1, ageDays: 0, quality: q(3, 3, 3, 1) })
-    else conflicts++
-  }
-
-  // 7. Opposing team's strikeout rate over the last 15 days, against its season rate.
-  const rec = facts.recent[oppSide].d15
-  const seasonK = game.defense[opp]?.['Strikeout rate']?.value
-  if (rec && seasonK !== undefined && rec.games >= 5) {
-    const gap = rec.kPct - seasonK
-    if ((over && gap >= 1.5) || (!over && gap <= -1.5)) {
-      edges.push({
-        description: `${opp} has struck out in ${f1(rec.kPct)}% of plate appearances over its last ${rec.games} games, ${gap > 0 ? 'up from' : 'down from'} ${f1(seasonK)}% for the season`,
-        category: 'recent_form',
-        horizon: 'last15',
-        layer: 'statistical',
-        relevanceScore: Math.min(1, 0.45 + Math.abs(gap) / 8),
-        supportingData: 'Team hitting, last 15 days',
-        weight: 0.1,
-        ageDays: 1,
-        quality: q(3, 2, 3, 1),
-        sample: rec.games,
-      })
-    }
-  }
-  return { edges, conflicts }
-}
-
-/** Team-level evidence for moneyline, run line and total: series state, bullpens, the two starters and recent scoring. */
-export function getTeamGameContext({ outcome: o, game }: ModuleInput): ModuleOutput {
-  const edges: Edge[] = []
-  let conflicts = 0
-  const facts = game.facts.mlb
-  if (!facts || (o.type !== 'moneyline' && o.type !== 'spread' && o.type !== 'total')) return { edges, conflicts }
-  const team = o.team?.abbr
-  const opp = o.team?.opponent
-  const sideOf = (abbr: string) => (abbr === game.away ? 'away' : 'home') as 'away' | 'home'
-
-  if (o.type !== 'total' && team && opp) {
-    const mine = sideOf(team)
-    const theirs = sideOf(opp)
-
-    // Series state.
-    const s = facts.series
-    if (s && !s.isOver && s.leader) {
-      const leading = s.leader === team
-      if (leading) {
-        const pen = facts.bullpen[theirs]
-        const rest = pen && pen.lastTwoDaysInnings >= 4 ? `; ${opp}'s bullpen has thrown ${f1(pen.lastTwoDaysInnings)} innings over the last two days` : ''
-        edges.push({ description: `${team} leads the ${s.description || s.short} ${s.leaderWins}-${s.trailWins} heading into Game ${s.gameNumber}${rest}`, category: 'context', horizon: 'tonight', layer: 'situational', relevanceScore: 0.55 + Math.min(0.2, (s.leaderWins - s.trailWins) * 0.1), supportingData: `${s.description}, best of ${s.totalGames}`, weight: 0.1, ageDays: 0, quality: q(3, 2, 3, 1) })
-      } else conflicts++
-    }
-
-    // Bullpens.
-    const own = facts.bullpen[mine]
-    const their = facts.bullpen[theirs]
-    if (their && their.games >= 2 && their.lastTwoDaysInnings >= 5) {
-      edges.push({ description: `${opp}'s bullpen has thrown ${f1(their.lastTwoDaysInnings)} innings over the last two days (${f1(their.seriesInnings)} across ${their.games} series games)${their.usedYesterday.length ? `, with ${their.usedYesterday.slice(0, 3).join(', ')} pitching yesterday` : ''} — a fatigue factor for late innings`, category: 'situational', horizon: 'tonight', layer: 'situational', relevanceScore: Math.min(1, 0.5 + their.lastTwoDaysInnings / 20), supportingData: 'Series boxscores', weight: 0.1, ageDays: 1, quality: q(3, 3, 3, 1) })
-    }
-    if (own && own.games >= 2 && own.lastTwoDaysInnings >= 6) conflicts++
-
-    // Starter against starter, over each one's last five starts.
-    const a = facts.starters[mine]
-    const b = facts.starters[theirs]
-    const era = (st: StarterFacts | null) => {
-      const l = st?.starts.slice(0, 5) ?? []
-      const inn = l.reduce((n, x) => n + x.ip, 0)
-      return l.length >= 3 && inn > 0 ? { era: (l.reduce((n, x) => n + x.er, 0) * 9) / inn, ip: inn, n: l.length } : null
-    }
-    const ea = era(a)
-    const eb = era(b)
-    if (a && b && ea && eb && Math.abs(ea.era - eb.era) >= 1.5) {
-      if (ea.era < eb.era) edges.push({ description: `${a.name} has a ${ea.era.toFixed(2)} ERA over his last ${ea.n} starts (${f1(ea.ip)} IP) against ${eb.era.toFixed(2)} for ${b.name} over his last ${eb.n}`, category: 'recent_form', horizon: 'last30', layer: 'statistical', relevanceScore: Math.min(1, 0.45 + (eb.era - ea.era) / 6), supportingData: 'Starting pitching, last five starts each', weight: 0.14, ageDays: 5, quality: q(3, 3, 3, 1), sample: Math.min(ea.n, eb.n) })
-      else conflicts++
-    }
-    if (a?.restDays !== null && a?.restDays !== undefined && a.restDays <= 3) conflicts++
-    if (b?.restDays !== null && b?.restDays !== undefined && b.restDays <= 3) edges.push({ description: `${b.name} starts for ${opp} on ${b.restDays} days of rest — velocity and endurance can suffer on short rest`, category: 'situational', horizon: 'tonight', layer: 'situational', relevanceScore: 0.55, supportingData: 'Days since his last start', weight: 0.08, ageDays: 0, quality: q(3, 3, 3, 1) })
-  }
-
-  // Totals: recent scoring on both sides, starters, bullpens and the over record.
-  if (o.type === 'total' && o.threshold !== undefined) {
-    const over = o.direction !== 'under'
-    const fromResults = (abbr: string, n: number): TeamRecent | null => {
-      const g = (game.results[abbr] ?? []).slice(0, n)
-      return g.length >= 5 ? { days: 0, games: g.length, runsPerGame: mean(g.map((x) => x.us)), avg: 0, kPct: 0 } : null
-    }
-    const aR = facts.recent.away.d15 ?? fromResults(game.away, 15)
-    const hR = facts.recent.home.d15 ?? fromResults(game.home, 15)
-    const a7 = facts.recent.away.d7 ?? fromResults(game.away, 7)
-    const h7 = facts.recent.home.d7 ?? fromResults(game.home, 7)
-    if (aR && hR && aR.games >= 5 && hR.games >= 5) {
-      const combined = aR.runsPerGame + hR.runsPerGame
-      const gap = combined - o.threshold
-      if ((over && gap >= 0.6) || (!over && gap <= -0.6)) {
-        edges.push({
-          description: `Over the last ${aR.games} and ${hR.games} games ${game.away} has scored ${f1(aR.runsPerGame)} and ${game.home} ${f1(hR.runsPerGame)} runs per game — ${f1(combined)} combined against a line of ${o.threshold}${a7 && h7 ? `; the last 7 days read ${f1(a7.runsPerGame)} and ${f1(h7.runsPerGame)}` : ''}`,
-          category: 'recent_form',
-          horizon: 'last15',
-          layer: 'statistical',
-          relevanceScore: Math.min(1, 0.45 + Math.abs(gap) / 4),
-          supportingData: 'Team hitting by date range',
-          weight: 0.14,
-          ageDays: 1,
-          quality: q(3, 2, 3, 1),
-          sample: Math.min(aR.games, hR.games),
-        })
-      } else if ((over && gap <= -0.6) || (!over && gap >= 0.6)) conflicts++
-    }
-    const sa = facts.starters.away
-    const sh = facts.starters.home
-    const eraOf = (st: StarterFacts | null) => {
-      const l = st?.starts.slice(0, 5) ?? []
-      const inn = l.reduce((n, x) => n + x.ip, 0)
-      return l.length >= 3 && inn > 0 ? (l.reduce((n, x) => n + x.er, 0) * 9) / inn : null
-    }
-    const ea = eraOf(sa)
-    const eh = eraOf(sh)
-    if (sa && sh && ea !== null && eh !== null) {
-      if (!over && ea <= 3 && eh <= 3) edges.push({ description: `Both starters have been sharp lately: ${sa.name} ${ea.toFixed(2)} ERA and ${sh.name} ${eh.toFixed(2)} ERA over their last five starts`, category: 'recent_form', horizon: 'last30', layer: 'statistical', relevanceScore: 0.6, supportingData: 'Starting pitching, last five starts each', weight: 0.12, ageDays: 5, quality: q(3, 3, 3, 1) })
-      else if (over && ea >= 4.5 && eh >= 4.5) edges.push({ description: `Neither starter has been sharp lately: ${sa.name} ${ea.toFixed(2)} ERA and ${sh.name} ${eh.toFixed(2)} ERA over their last five starts`, category: 'recent_form', horizon: 'last30', layer: 'statistical', relevanceScore: 0.6, supportingData: 'Starting pitching, last five starts each', weight: 0.12, ageDays: 5, quality: q(3, 3, 3, 1) })
-      else if ((over && ea <= 3 && eh <= 3) || (!over && ea >= 4.5 && eh >= 4.5)) conflicts++
-    }
-    const pens = [facts.bullpen.away, facts.bullpen.home].filter((p): p is BullpenFacts => !!p && p.games >= 2)
-    const tired = pens.filter((p) => p.lastTwoDaysInnings >= 5)
-    if (over && tired.length > 0) edges.push({ description: `${tired.map((p) => `${p.team}'s bullpen (${f1(p.lastTwoDaysInnings)} innings over the last two days)`).join(' and ')} ${tired.length > 1 ? 'are' : 'is'} worn — a late-inning scoring factor`, category: 'situational', horizon: 'tonight', layer: 'situational', relevanceScore: 0.55, supportingData: 'Series boxscores', weight: 0.08, ageDays: 1, quality: q(3, 3, 3, 1) })
-    const oa = facts.overs.away
-    const oh = facts.overs.home
-    if (oa && oh) {
-      const rate = (oa.over + oh.over) / (oa.of + oh.of)
-      if ((over && rate >= 0.62) || (!over && rate <= 0.38)) {
-        edges.push({ description: `The ${over ? 'over' : 'under'} has hit in ${over ? oa.over + oh.over : oa.of + oh.of - oa.over - oh.over} of the last ${oa.of + oh.of} games for these two teams combined (${game.away} ${over ? oa.over : oa.of - oa.over} of ${oa.of}, ${game.home} ${over ? oh.over : oh.of - oh.over} of ${oh.of})`, category: 'recent_form', horizon: 'last15', layer: 'statistical', relevanceScore: Math.min(1, 0.4 + Math.abs(rate - 0.5) * 1.6), supportingData: 'Against each game\'s closing total', weight: 0.1, ageDays: 3, quality: q(3, 2, 3, 2), sample: oa.of + oh.of })
-      }
-    }
-  }
-  return { edges, conflicts }
-}

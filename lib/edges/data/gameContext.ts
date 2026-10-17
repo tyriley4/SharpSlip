@@ -225,8 +225,10 @@ export async function loadGameContext(sport: Sport, gameId: string, away: string
     const odds = oddsRes
     const startTime = odds?.commenceTime ?? null
     const mlb = sport === 'mlb' ? await loadMlbGameInfo(gameId) : null
-    const [season, winLeague, conf] = await Promise.all([detectGameContext({ sport, gameId, startTime }), leagueWinPct(sport), conferences(sport, [away, home])])
+    const [season, winLeague] = await Promise.all([detectGameContext({ sport, gameId, startTime }), leagueWinPct(sport)])
     const results = { [away]: [...awayCur, ...awayPrev], [home]: [...homeCur, ...homePrev] }
+    // College conferences for both teams and every opponent they have met (conference-game records need the opponent's).
+    const conf = await conferences(sport, Array.from(new Set([away, home, ...results[away].map((g) => g.opp), ...results[home].map((g) => g.opp)])))
     const priorSeasonOnly = awayCur.length === 0 && homeCur.length === 0
     const winMin = minimumsFor({ sport, results, home }).winPct
     const winPct: Record<string, number> = {}
@@ -252,8 +254,8 @@ export async function loadGameContext(sport: Sport, gameId: string, away: string
           return null
         }
       }
-      facts.lines = await run(() => loadLineFacts(sport, away, home, currentSeasonYear(sport), winLeague))
-      if (sport === 'mlb') facts.mlb = await run(() => loadMlbGameFacts(mlb, away, home))
+      facts.lines = await run(() => loadLineFacts(sport, away, home, currentSeasonYear(sport), winLeague, conf))
+      if (sport === 'mlb') facts.mlb = await run(() => loadMlbGameFacts(mlb, away, home, injuries))
       else if (sport === 'nfl') facts.nfl = await run(() => loadNflGameFacts(away, home, currentSeasonYear('nfl')))
       else if (sport === 'nhl') facts.nhl = await run(() => loadNhlGameFacts(away, home, startTime))
       else if (sport === 'nba') facts.nba = loadNbaGameFacts({ away, home, results, startTime })
